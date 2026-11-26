@@ -124,7 +124,7 @@ function makeZombie(type, x, y){
   z.draw = (c, sx, sy) => {
     const fr = Math.floor(z.step)%4;
     if (!drawZombiePuppet(c, z)) drawChar(c, sx, sy, z.pal, z.dir, fr, T.u, {zombie: true, flash: z.flash > 0, bobY: Math.sin(time*5 + z.wander)*0.4});
-    if (z.hp < z.maxHp){ const w = 14*T.u; c.fillStyle = '#1d1528'; c.fillRect(Math.round(sx - w/2) - 1, Math.round(sy - 26*T.u) - 1, w + 2, 4); c.fillStyle = '#5a1f24'; c.fillRect(Math.round(sx - w/2), Math.round(sy - 26*T.u), w, 2); c.fillStyle = T.boss ? '#e8b04a' : '#d94c3a'; c.fillRect(Math.round(sx - w/2), Math.round(sy - 26*T.u), w*z.hp/z.maxHp, 2); }
+    if (z.hp < z.maxHp && !window.__cine){ const w = 14*T.u; c.fillStyle = '#1d1528'; c.fillRect(Math.round(sx - w/2) - 1, Math.round(sy - 26*T.u) - 1, w + 2, 4); c.fillStyle = '#5a1f24'; c.fillRect(Math.round(sx - w/2), Math.round(sy - 26*T.u), w, 2); c.fillStyle = T.boss ? '#e8b04a' : '#d94c3a'; c.fillRect(Math.round(sx - w/2), Math.round(sy - 26*T.u), w*z.hp/z.maxHp, 2); }
     if (z.burn > 0){ c.fillStyle = (Math.floor(time*12)%2) ? '#ffb23a' : '#ff6a2a'; c.fillRect(Math.round(sx) - 2, Math.round(sy - 22*T.u) - 3, 4, 5); }
   };
   zombies.push(z); return z;
@@ -377,7 +377,7 @@ function addNpc(id, name, pal, x, y, o){
   const p = freeNear(x, y, 0.5);
   const n = Object.assign({id, name, pal, x: p[0], y: p[1], dir: 'd', dyn: true, hgt: 2, t: Math.random()*6, follow: false, hp: 60}, o || {});
   n.depth = depthOf(n.x, n.y);
-  n.draw = (c, sx, sy) => { if (!drawNpcPuppet(c, n)) drawChar(c, sx, sy, n.pal, n.dir, n.moving ? Math.floor(n.t*8)%4 : 0, 1, {bobY: Math.sin(time*2 + n.t)*0.3, flash: n.flash > 0}); if (n.name && !n.hideName && Math.hypot(n.x - hero.x, n.y - hero.y) < 12){ c.font = '6px monospace'; c.textAlign = 'center'; c.fillStyle = '#1d1528'; c.fillText(n.name, sx + 1, sy - 28); c.fillStyle = '#ffe9b0'; c.fillText(n.name, sx, sy - 29); } };
+  n.draw = (c, sx, sy) => { if (!drawNpcPuppet(c, n)) drawChar(c, sx, sy, n.pal, n.dir, n.moving ? Math.floor(n.t*8)%4 : 0, 1, {bobY: Math.sin(time*2 + n.t)*0.3, flash: n.flash > 0}); if (n.name && !n.hideName && !window.__cine && Math.hypot(n.x - hero.x, n.y - hero.y) < 12){ c.font = '6px monospace'; c.textAlign = 'center'; c.fillStyle = '#1d1528'; c.fillText(n.name, sx + 1, sy - 28); c.fillStyle = '#ffe9b0'; c.fillText(n.name, sx, sy - 29); } };
   npcs[id] = n; return n;
 }
 function updateNpcs(dt){

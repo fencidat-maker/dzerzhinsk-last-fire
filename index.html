@@ -514,7 +514,7 @@ function makeZombie(type, x, y){
   z.draw = (c, sx, sy) => {
     const fr = Math.floor(z.step)%4;
     if (!drawZombiePuppet(c, z)) drawChar(c, sx, sy, z.pal, z.dir, fr, T.u, {zombie: true, flash: z.flash > 0, bobY: Math.sin(time*5 + z.wander)*0.4});
-    if (z.hp < z.maxHp){ const w = 14*T.u; c.fillStyle = '#1d1528'; c.fillRect(Math.round(sx - w/2) - 1, Math.round(sy - 26*T.u) - 1, w + 2, 4); c.fillStyle = '#5a1f24'; c.fillRect(Math.round(sx - w/2), Math.round(sy - 26*T.u), w, 2); c.fillStyle = T.boss ? '#e8b04a' : '#d94c3a'; c.fillRect(Math.round(sx - w/2), Math.round(sy - 26*T.u), w*z.hp/z.maxHp, 2); }
+    if (z.hp < z.maxHp && !window.__cine){ const w = 14*T.u; c.fillStyle = '#1d1528'; c.fillRect(Math.round(sx - w/2) - 1, Math.round(sy - 26*T.u) - 1, w + 2, 4); c.fillStyle = '#5a1f24'; c.fillRect(Math.round(sx - w/2), Math.round(sy - 26*T.u), w, 2); c.fillStyle = T.boss ? '#e8b04a' : '#d94c3a'; c.fillRect(Math.round(sx - w/2), Math.round(sy - 26*T.u), w*z.hp/z.maxHp, 2); }
     if (z.burn > 0){ c.fillStyle = (Math.floor(time*12)%2) ? '#ffb23a' : '#ff6a2a'; c.fillRect(Math.round(sx) - 2, Math.round(sy - 22*T.u) - 3, 4, 5); }
   };
   zombies.push(z); return z;
@@ -767,7 +767,7 @@ function addNpc(id, name, pal, x, y, o){
   const p = freeNear(x, y, 0.5);
   const n = Object.assign({id, name, pal, x: p[0], y: p[1], dir: 'd', dyn: true, hgt: 2, t: Math.random()*6, follow: false, hp: 60}, o || {});
   n.depth = depthOf(n.x, n.y);
-  n.draw = (c, sx, sy) => { if (!drawNpcPuppet(c, n)) drawChar(c, sx, sy, n.pal, n.dir, n.moving ? Math.floor(n.t*8)%4 : 0, 1, {bobY: Math.sin(time*2 + n.t)*0.3, flash: n.flash > 0}); if (n.name && !n.hideName && Math.hypot(n.x - hero.x, n.y - hero.y) < 12){ c.font = '6px monospace'; c.textAlign = 'center'; c.fillStyle = '#1d1528'; c.fillText(n.name, sx + 1, sy - 28); c.fillStyle = '#ffe9b0'; c.fillText(n.name, sx, sy - 29); } };
+  n.draw = (c, sx, sy) => { if (!drawNpcPuppet(c, n)) drawChar(c, sx, sy, n.pal, n.dir, n.moving ? Math.floor(n.t*8)%4 : 0, 1, {bobY: Math.sin(time*2 + n.t)*0.3, flash: n.flash > 0}); if (n.name && !n.hideName && !window.__cine && Math.hypot(n.x - hero.x, n.y - hero.y) < 12){ c.font = '6px monospace'; c.textAlign = 'center'; c.fillStyle = '#1d1528'; c.fillText(n.name, sx + 1, sy - 28); c.fillStyle = '#ffe9b0'; c.fillText(n.name, sx, sy - 29); } };
   npcs[id] = n; return n;
 }
 function updateNpcs(dt){
@@ -1034,7 +1034,7 @@ const Quests = (function(){
   function trackedChain(){ const c = ch[tracked]; if (c && c.active && !c.done) return c; for (let i = 0; i < ch.length; i++) if (ch[i].active && !ch[i].done){ tracked = i; return ch[i]; } return null; }
   function stepTarget(c){
     const s = cur(c); if (!s) return null;
-    if (s.level && (!LEVEL || LEVEL.id !== s.level)) return pos('mall');
+    if (s.level && (!LEVEL || LEVEL.id !== s.level)) return pos(LEVELS[s.level].outside);
     if (s.t === 'talk'){ const n = npcs[s.who]; return n ? [n.x, n.y] : null; }
     if (s.t === 'intro') return null;
     if (s.t === 'choice') return pos(s.opts[0].poi);
@@ -1208,6 +1208,7 @@ const Quests = (function(){
     if (s.t === 'escort' && c.waitTalk) txt = 'Подойдите к ' + (npcs[s.who] ? npcs[s.who].name : '') + ' и поговорите';
     if (s.t === 'drive') txt = c.boarded ? (c.car && c.car.wrecked ? 'Машина разбита — бегите с Асей к Вечному огню' : 'Гоните к Вечному огню! (ручник — «Бег»)') : (driving ? 'Подъедьте к Асе' : s.obj + ' (сесть — «Действие»)');
     if (s.t === 'hold') txt += ' (' + (c.prog || 0) + '/' + s.items.length + ')';
+    if (s.level && (!LEVEL || LEVEL.id !== s.level)) txt = 'Вернитесь в ' + ({mall: 'ТЦ «Дзержинец»', pool: 'бассейн «Заря»', cinema: '«Жюль Верн»'}[s.level] || 'здание') + ' — подойдите ко входу';
     if (s.t === 'beam' && c.beamOn) txt = 'Держитесь, пока работает проектор (' + Math.floor(c.prog || 0) + '/' + s.secs + ' с)';
     if (s.t === 'choice') txt += ': ' + s.opts.map(o => o.label).join(' или ');
     elT.textContent = c.def.main ? (S.chapter || 'Основное') + ' · ' + c.def.title : 'Побочное · ' + c.def.title;
@@ -1265,6 +1266,7 @@ function enterLevel(id, silent){
     const p = POI[L.enter]; hero.x = p[0]; hero.y = p[1]; hero.vx = hero.vy = 0; hero.air = null;
     for (const s of L.spawns){ const w = lvW(L, s[0], s[1]); MOVER = {T: 1}; const q = freeNear(w[0], w[1], 0.5); MOVER = null; const z = makeZombie(s[2], q[0], q[1]); z.keep = true; z.alert = 0; z.still = Math.random() < 0.5;
       if (L.pit && inPit(z.x, z.y)){ z.sleep = true; z.still = true; } }
+    Quests.updateUI();
     toast(L.title || {mall: 'ТЦ «Дзержинец»', pool: 'Бассейн «Заря»', cinema: '«Жюль Верн»'}[id], 2.5);
   };
   silent ? go() : fadeScreen(go);
@@ -1275,6 +1277,7 @@ function leaveLevel(silent){
   LEVEL_LAST = LEVEL;
   const go = () => {
     LEVEL = null; document.body.classList.remove('sneakable'); if (hero.sneak) setSneak(false); zombies.length = 0; bullets.length = 0; spits.length = 0; fires.length = 0;
+    setTimeout(() => Quests.updateUI(), 0);
     const out = POI[LEVEL_LAST.outside]; const p = freeNear(out[0], out[1], 0.5); hero.x = p[0]; hero.y = p[1]; hero.vx = hero.vy = 0; hero.air = null; hero.lift = 0;
   };
   silent ? go() : fadeScreen(go);
@@ -1765,6 +1768,7 @@ function render(){
 }
 function tilesWaiting(){ if (LEVEL) return !LEVEL.bgReady; const hs = P(hero.x, hero.y, 0); return tilesIn(hs[0] - 50, hs[1] - 50, hs[0] + 50, hs[1] + 50).some(t => t.state !== 2); }
 function drawArrows(cX, cY){
+  if (window.__cine) return;
   const tg = Quests.targets(); const cxm = cv.width/2, cym = cv.height*0.52;
   tg.forEach(t => {
     const s = P(t.x, t.y, 0), sx = (s[0] - cX)*K, sy = (s[1] - cY)*K;

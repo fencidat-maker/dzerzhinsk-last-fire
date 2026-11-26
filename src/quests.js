@@ -156,7 +156,7 @@ const Quests = (function(){
   function trackedChain(){ const c = ch[tracked]; if (c && c.active && !c.done) return c; for (let i = 0; i < ch.length; i++) if (ch[i].active && !ch[i].done){ tracked = i; return ch[i]; } return null; }
   function stepTarget(c){
     const s = cur(c); if (!s) return null;
-    if (s.level && (!LEVEL || LEVEL.id !== s.level)) return pos('mall');
+    if (s.level && (!LEVEL || LEVEL.id !== s.level)) return pos(LEVELS[s.level].outside);
     if (s.t === 'talk'){ const n = npcs[s.who]; return n ? [n.x, n.y] : null; }
     if (s.t === 'intro') return null;
     if (s.t === 'choice') return pos(s.opts[0].poi);
@@ -330,6 +330,7 @@ const Quests = (function(){
     if (s.t === 'escort' && c.waitTalk) txt = 'Подойдите к ' + (npcs[s.who] ? npcs[s.who].name : '') + ' и поговорите';
     if (s.t === 'drive') txt = c.boarded ? (c.car && c.car.wrecked ? 'Машина разбита — бегите с Асей к Вечному огню' : 'Гоните к Вечному огню! (ручник — «Бег»)') : (driving ? 'Подъедьте к Асе' : s.obj + ' (сесть — «Действие»)');
     if (s.t === 'hold') txt += ' (' + (c.prog || 0) + '/' + s.items.length + ')';
+    if (s.level && (!LEVEL || LEVEL.id !== s.level)) txt = 'Вернитесь в ' + ({mall: 'ТЦ «Дзержинец»', pool: 'бассейн «Заря»', cinema: '«Жюль Верн»'}[s.level] || 'здание') + ' — подойдите ко входу';
     if (s.t === 'beam' && c.beamOn) txt = 'Держитесь, пока работает проектор (' + Math.floor(c.prog || 0) + '/' + s.secs + ' с)';
     if (s.t === 'choice') txt += ': ' + s.opts.map(o => o.label).join(' или ');
     elT.textContent = c.def.main ? (S.chapter || 'Основное') + ' · ' + c.def.title : 'Побочное · ' + c.def.title;

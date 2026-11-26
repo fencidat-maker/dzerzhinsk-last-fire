@@ -186,6 +186,7 @@ function render(){
 }
 function tilesWaiting(){ if (LEVEL) return !LEVEL.bgReady; const hs = P(hero.x, hero.y, 0); return tilesIn(hs[0] - 50, hs[1] - 50, hs[0] + 50, hs[1] + 50).some(t => t.state !== 2); }
 function drawArrows(cX, cY){
+  if (window.__cine) return;
   const tg = Quests.targets(); const cxm = cv.width/2, cym = cv.height*0.52;
   tg.forEach(t => {
     const s = P(t.x, t.y, 0), sx = (s[0] - cX)*K, sy = (s[1] - cY)*K;

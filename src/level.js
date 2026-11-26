@@ -39,6 +39,7 @@ function enterLevel(id, silent){
     const p = POI[L.enter]; hero.x = p[0]; hero.y = p[1]; hero.vx = hero.vy = 0; hero.air = null;
     for (const s of L.spawns){ const w = lvW(L, s[0], s[1]); MOVER = {T: 1}; const q = freeNear(w[0], w[1], 0.5); MOVER = null; const z = makeZombie(s[2], q[0], q[1]); z.keep = true; z.alert = 0; z.still = Math.random() < 0.5;
       if (L.pit && inPit(z.x, z.y)){ z.sleep = true; z.still = true; } }
+    Quests.updateUI();
     toast(L.title || {mall: 'ТЦ «Дзержинец»', pool: 'Бассейн «Заря»', cinema: '«Жюль Верн»'}[id], 2.5);
   };
   silent ? go() : fadeScreen(go);
@@ -49,6 +50,7 @@ function leaveLevel(silent){
   LEVEL_LAST = LEVEL;
   const go = () => {
     LEVEL = null; document.body.classList.remove('sneakable'); if (hero.sneak) setSneak(false); zombies.length = 0; bullets.length = 0; spits.length = 0; fires.length = 0;
+    setTimeout(() => Quests.updateUI(), 0);
     const out = POI[LEVEL_LAST.outside]; const p = freeNear(out[0], out[1], 0.5); hero.x = p[0]; hero.y = p[1]; hero.vx = hero.vy = 0; hero.air = null; hero.lift = 0;
   };
   silent ? go() : fadeScreen(go);
