@@ -14,6 +14,7 @@ function blocked(x, y, r, ignoreOwn){
     for (let i = 0; i < p.length; i++){ const q = p[(i + 1)%p.length]; if (distSeg(x, y, p[i][0], p[i][1], q[0], q[1]) < r) return true; }
   }
   if (colMask(x, y, r)) return true;
+  if (CARS.length && carBlocks(x, y, r, ignoreOwn)) return true;
   for (const o of objsInRect(x - 3, y - 3, x + 3, y + 3)){
     if (o.dead || !o.r || o.t === 'lamp' || o === ignoreOwn) continue;
     if (Math.hypot(x - o.x, y - o.y) < r + o.r) return true;
@@ -45,6 +46,7 @@ function stepTrack(e, ox, oy, stride){
   }
 }
 function moveEntity(e, dx, dy, r){
+  MOVER = e;
   let nx = e.x + dx, ny = e.y + dy;
   if (!blocked(nx, ny, r)){ e.x = nx; e.y = ny; return true; }
   if (!blocked(nx, e.y, r)){ e.x = nx; return true; }
@@ -150,12 +152,16 @@ function updateZombies(dt){
     if (z.burn > 0){ z.burn -= dt; z.hp -= 18*dt; if (z.hp <= 0){ killZombie(z, i); continue; } }
     if (z.spawnT < 0.6){ z.spawnT += dt; }
     let mvx = 0, mvy = 0, sp = T.spd*SPD_S;
+    if (LEVEL){ const fl = levelFloor(z.x, z.y); if (fl === 'balls') sp *= 0.45; else if (fl === 'pit') sp *= 0.6; }
+    if (z.sleep){ z.depth = depthOf(z.x, z.y); continue; }
+    if (z.wakeT > 0){ z.wakeT -= dt; z.depth = depthOf(z.x, z.y); continue; }
     const chasing = !S.dead && (d < T.sight*(LEVEL ? 0.45 : 1) && (d < 9 || losClear(z.x, z.y, hero.x, hero.y)) || z.alert > 0 || z.boss);
     if (z.alert > 0) z.alert -= dt;
+    if (hero.air) { /* can't reach a flying hero */ }
     if (chasing){
       const l = d || 1; mvx = dx/l; mvy = dy/l;
       if (T.spit && d < 15 && d > 5){ mvx = mvy = 0; z.spitT -= dt; if (z.spitT <= 0 && losClear(z.x, z.y, hero.x, hero.y)){ z.spitT = 2.6; z.atkT = 0.4; z.fx = dx; z.fy = dy; const a = Math.atan2(dy, dx); spits.push({x: z.x, y: z.y, vx: Math.cos(a)*13, vy: Math.sin(a)*13, life: 1.6}); } }
-      if (d < T.r + 0.6 + 0.45){ mvx = mvy = 0; if (z.cool <= 0){ z.cool = 0.9; z.atkT = 0.35; z.fx = dx; z.fy = dy; AUD.at('zattack', z.x, z.y, 0.7, 20, z.type === 'brute' || z.type === 'boss' ? 0.8 : 1); hurtHero(T.dmg*(z.hardness || 1), T.chill); hero.vx += dx/(d||1)*2; hero.vy += dy/(d||1)*2; z.dir = screenDirOf(dx, dy); } }
+      if (d < T.r + (hero.inCar ? 2.4 : 1.05)){ mvx = mvy = 0; if (z.cool <= 0){ z.cool = 0.9; z.atkT = 0.35; z.fx = dx; z.fy = dy; AUD.at('zattack', z.x, z.y, 0.7, 20, z.type === 'brute' || z.type === 'boss' ? 0.8 : 1); hurtHero(T.dmg*(z.hardness || 1), T.chill); hero.vx += dx/(d||1)*2; hero.vy += dy/(d||1)*2; z.dir = screenDirOf(dx, dy); } }
     } else {
       z.wander -= dt; if (z.wander <= 0){ z.wander = 2 + Math.random()*4; z.wa = Math.random()*TAU; z.still = Math.random() < 0.35; }
       if (!z.still){ mvx = Math.cos(z.wa); mvy = Math.sin(z.wa); sp *= 0.4; }
@@ -203,6 +209,7 @@ function killZombie(z, idx){
 const corpses = [];
 function hurtHero(d, chill){
   if (S.dead || hero.iframe > 0) return;
+  if (hero.inCar && driving){ driving.hp -= d*0.45; driving.shake = 0.2; hero.iframe = 0.3; sfx('hit'); haptic('light'); return; }
   S.hp -= d; hero.hitFlash = 0.18; hero.hurtT = 0.22; hero.iframe = 0.35; sfx('hurt'); haptic('medium'); if (chill) S.slow = 2.2;
   spawnPart(hero.x, hero.y, 1.4, '#a02a34', 6, 3, 0.5);
   if (S.hp <= 0){ S.hp = 0; S.dead = true; onDeath(); }
@@ -240,7 +247,7 @@ function nearestTarget(range, cone){
 function fire(){
   const w = curW(); if (S.dead || hero.fireT > 0 || hero.reloadT > 0) return;
   if (w.melee){
-    hero.fireT = w.rate; hero.swing = 0.2; hero.atkT = hero.atkDur = 0.4; sfx('swing');
+    hero.fireT = w.rate; hero.swing = 0.2; hero.atkT = hero.atkDur = 0.4; sfx('swing'); if (LEVEL) makeNoise(hero.x, hero.y, 6);
     const tgt = nearestTarget(w.range + 1.2, 1.6);
     if (tgt) hero.aim = Math.atan2(tgt.y - hero.y, tgt.x - hero.x);
     let hit = false;
@@ -258,7 +265,7 @@ function fire(){
   const tgt = nearestTarget(w.range, 1.7);
   if (input.aimX != null){ hero.aim = input.aimA; }
   else if (tgt) hero.aim = Math.atan2(tgt.y - hero.y, tgt.x - hero.x);
-  S.mag[id]--; hero.fireT = w.rate; hero.muzzle = 0.07; hero.atkT = hero.atkDur = Math.max(0.12, Math.min(0.26, w.rate*0.9)); sfx(id === 'obrez' ? 'shotgun' : id === 'ak' ? 'ak' : 'shot'); haptic('light');
+  S.mag[id]--; hero.fireT = w.rate; hero.muzzle = 0.07; hero.atkT = hero.atkDur = Math.max(0.12, Math.min(0.26, w.rate*0.9)); sfx(id === 'obrez' ? 'shotgun' : id === 'ak' ? 'ak' : 'shot'); if (LEVEL) makeNoise(hero.x, hero.y, 60); haptic('light');
   const n = w.pellets || 1;
   for (let i = 0; i < n; i++){ const a = hero.aim + (Math.random() - 0.5)*2*w.spread; bullets.push({x: hero.x + Math.cos(a)*0.8, y: hero.y + Math.sin(a)*0.8, px: hero.x, py: hero.y, vx: Math.cos(a)*w.speed, vy: Math.sin(a)*w.speed, life: w.range/w.speed, dmg: w.dmg, a}); }
   hero.recoil = 0.1;
@@ -273,6 +280,7 @@ function finishReload(){
   S.mag[hero.reloadFor] = (S.mag[hero.reloadFor] || 0) + take; S.ammo[w.ammo] -= take; hud();
 }
 function damageZombie(z, dmg, ang){
+  if (z.sleep){ z.sleep = false; z.still = false; z.alert = 10; if (LEVEL) makeNoise(z.x, z.y, 10); }
   z.hp -= dmg; z.flash = 0.08; z.alert = 8; z.kb = 0.12; z.kvx = Math.cos(ang); z.kvy = Math.sin(ang);
   sfx('hit'); spawnPart(z.x, z.y, 1.4, z.type === 'chemist' ? '#9bd44a' : '#8a1f2a', 4, 3, 0.4);
   if (z.hp <= 0) killZombie(z);
@@ -330,10 +338,12 @@ function updateHero(dt){
   if (keys['arrowup'] || keys['w'] || keys['ц']) iy -= 1; if (keys['arrowdown'] || keys['s'] || keys['ы']) iy += 1;
   const mag = Math.min(1, Math.hypot(ix, iy));
   hero.moving = false;
+  if (hero.inCar){ hero.depth = depthOf(hero.x, hero.y); return; }
+  if (hero.air){ heroAir(dt); hero.depth = depthOf(hero.x, hero.y); return; }
   if (!S.dead && !uiBlock() && mag > 0.06){
     const g = unrot(ix, iy), gl = Math.hypot(g[0], g[1]) || 1, gx = g[0]/gl, gy = g[1]/gl;
     const sprint = (input.sprint || keys['shift']) && S.stamina > 2;
-    let sp = (sprint ? 13.5 : 9.0)*mag*SPD_S; if (S.slow > 0) sp *= 0.55;
+    let sp = (sprint ? 13.5 : 9.0)*mag*SPD_S; if (S.slow > 0) sp *= 0.55; if (LEVEL && levelFloor(hero.x, hero.y) === 'balls') sp *= 0.42;
     { const a = P(gx, gy, 0), b = P(0, 0, 0); sp *= Math.min(2.1, SCREEN_REF/Math.max(0.001, Math.hypot(a[0] - b[0], a[1] - b[1]))); }
     if (sprint){ S.stamina = Math.max(0, S.stamina - 22*dt); }
     const ox = hero.x, oy = hero.y;

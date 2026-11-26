@@ -72,6 +72,7 @@ const ZOMB_H = {walker: 48, runner: 47, brute: 62, chemist: 49, frost: 49, boss:
 function drawZombiePuppet(c, z){
   const view = pupView(z.fx || 0.3, z.fy || 0.6), h = ZOMB_H[z.type] || 40;
   if (z.dead) return drawPuppet(c, 'zomb', z.type, 5, view, h, {alpha: Math.min(1, z.deadT/1.2), noShadow: true});
+  if (z.sleep || z.wakeT > 0) return drawPuppet(c, 'zomb', z.type, z.wakeT > 0 && z.wakeT < 0.5 ? 4 : 5, view, h, {noShadow: true, flash: z.flash > 0});
   if (z.atkT > 0) return drawPuppet(c, 'zomb', z.type, 4, view, h, {flash: z.flash > 0});
   const ph = (z.walkPx || 0)/(h*CHS*(z.type === 'runner' ? 1.3 : 0.9));
   if (PUP.atlases.zwalk && PUP.atlases.zwalk.rows[z.type] != null && pupReady('zwalk') && !(VSKIP[z.type] && VSKIP[z.type].includes(view[0])))

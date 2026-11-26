@@ -402,6 +402,7 @@ function blocked(x, y, r, ignoreOwn){
     for (let i = 0; i < p.length; i++){ const q = p[(i + 1)%p.length]; if (distSeg(x, y, p[i][0], p[i][1], q[0], q[1]) < r) return true; }
   }
   if (colMask(x, y, r)) return true;
+  if (CARS.length && carBlocks(x, y, r, ignoreOwn)) return true;
   for (const o of objsInRect(x - 3, y - 3, x + 3, y + 3)){
     if (o.dead || !o.r || o.t === 'lamp' || o === ignoreOwn) continue;
     if (Math.hypot(x - o.x, y - o.y) < r + o.r) return true;
@@ -433,6 +434,7 @@ function stepTrack(e, ox, oy, stride){
   }
 }
 function moveEntity(e, dx, dy, r){
+  MOVER = e;
   let nx = e.x + dx, ny = e.y + dy;
   if (!blocked(nx, ny, r)){ e.x = nx; e.y = ny; return true; }
   if (!blocked(nx, e.y, r)){ e.x = nx; return true; }
@@ -538,12 +540,16 @@ function updateZombies(dt){
     if (z.burn > 0){ z.burn -= dt; z.hp -= 18*dt; if (z.hp <= 0){ killZombie(z, i); continue; } }
     if (z.spawnT < 0.6){ z.spawnT += dt; }
     let mvx = 0, mvy = 0, sp = T.spd*SPD_S;
+    if (LEVEL){ const fl = levelFloor(z.x, z.y); if (fl === 'balls') sp *= 0.45; else if (fl === 'pit') sp *= 0.6; }
+    if (z.sleep){ z.depth = depthOf(z.x, z.y); continue; }
+    if (z.wakeT > 0){ z.wakeT -= dt; z.depth = depthOf(z.x, z.y); continue; }
     const chasing = !S.dead && (d < T.sight*(LEVEL ? 0.45 : 1) && (d < 9 || losClear(z.x, z.y, hero.x, hero.y)) || z.alert > 0 || z.boss);
     if (z.alert > 0) z.alert -= dt;
+    if (hero.air) { /* can't reach a flying hero */ }
     if (chasing){
       const l = d || 1; mvx = dx/l; mvy = dy/l;
       if (T.spit && d < 15 && d > 5){ mvx = mvy = 0; z.spitT -= dt; if (z.spitT <= 0 && losClear(z.x, z.y, hero.x, hero.y)){ z.spitT = 2.6; z.atkT = 0.4; z.fx = dx; z.fy = dy; const a = Math.atan2(dy, dx); spits.push({x: z.x, y: z.y, vx: Math.cos(a)*13, vy: Math.sin(a)*13, life: 1.6}); } }
-      if (d < T.r + 0.6 + 0.45){ mvx = mvy = 0; if (z.cool <= 0){ z.cool = 0.9; z.atkT = 0.35; z.fx = dx; z.fy = dy; AUD.at('zattack', z.x, z.y, 0.7, 20, z.type === 'brute' || z.type === 'boss' ? 0.8 : 1); hurtHero(T.dmg*(z.hardness || 1), T.chill); hero.vx += dx/(d||1)*2; hero.vy += dy/(d||1)*2; z.dir = screenDirOf(dx, dy); } }
+      if (d < T.r + (hero.inCar ? 2.4 : 1.05)){ mvx = mvy = 0; if (z.cool <= 0){ z.cool = 0.9; z.atkT = 0.35; z.fx = dx; z.fy = dy; AUD.at('zattack', z.x, z.y, 0.7, 20, z.type === 'brute' || z.type === 'boss' ? 0.8 : 1); hurtHero(T.dmg*(z.hardness || 1), T.chill); hero.vx += dx/(d||1)*2; hero.vy += dy/(d||1)*2; z.dir = screenDirOf(dx, dy); } }
     } else {
       z.wander -= dt; if (z.wander <= 0){ z.wander = 2 + Math.random()*4; z.wa = Math.random()*TAU; z.still = Math.random() < 0.35; }
       if (!z.still){ mvx = Math.cos(z.wa); mvy = Math.sin(z.wa); sp *= 0.4; }
@@ -591,6 +597,7 @@ function killZombie(z, idx){
 const corpses = [];
 function hurtHero(d, chill){
   if (S.dead || hero.iframe > 0) return;
+  if (hero.inCar && driving){ driving.hp -= d*0.45; driving.shake = 0.2; hero.iframe = 0.3; sfx('hit'); haptic('light'); return; }
   S.hp -= d; hero.hitFlash = 0.18; hero.hurtT = 0.22; hero.iframe = 0.35; sfx('hurt'); haptic('medium'); if (chill) S.slow = 2.2;
   spawnPart(hero.x, hero.y, 1.4, '#a02a34', 6, 3, 0.5);
   if (S.hp <= 0){ S.hp = 0; S.dead = true; onDeath(); }
@@ -628,7 +635,7 @@ function nearestTarget(range, cone){
 function fire(){
   const w = curW(); if (S.dead || hero.fireT > 0 || hero.reloadT > 0) return;
   if (w.melee){
-    hero.fireT = w.rate; hero.swing = 0.2; hero.atkT = hero.atkDur = 0.4; sfx('swing');
+    hero.fireT = w.rate; hero.swing = 0.2; hero.atkT = hero.atkDur = 0.4; sfx('swing'); if (LEVEL) makeNoise(hero.x, hero.y, 6);
     const tgt = nearestTarget(w.range + 1.2, 1.6);
     if (tgt) hero.aim = Math.atan2(tgt.y - hero.y, tgt.x - hero.x);
     let hit = false;
@@ -646,7 +653,7 @@ function fire(){
   const tgt = nearestTarget(w.range, 1.7);
   if (input.aimX != null){ hero.aim = input.aimA; }
   else if (tgt) hero.aim = Math.atan2(tgt.y - hero.y, tgt.x - hero.x);
-  S.mag[id]--; hero.fireT = w.rate; hero.muzzle = 0.07; hero.atkT = hero.atkDur = Math.max(0.12, Math.min(0.26, w.rate*0.9)); sfx(id === 'obrez' ? 'shotgun' : id === 'ak' ? 'ak' : 'shot'); haptic('light');
+  S.mag[id]--; hero.fireT = w.rate; hero.muzzle = 0.07; hero.atkT = hero.atkDur = Math.max(0.12, Math.min(0.26, w.rate*0.9)); sfx(id === 'obrez' ? 'shotgun' : id === 'ak' ? 'ak' : 'shot'); if (LEVEL) makeNoise(hero.x, hero.y, 60); haptic('light');
   const n = w.pellets || 1;
   for (let i = 0; i < n; i++){ const a = hero.aim + (Math.random() - 0.5)*2*w.spread; bullets.push({x: hero.x + Math.cos(a)*0.8, y: hero.y + Math.sin(a)*0.8, px: hero.x, py: hero.y, vx: Math.cos(a)*w.speed, vy: Math.sin(a)*w.speed, life: w.range/w.speed, dmg: w.dmg, a}); }
   hero.recoil = 0.1;
@@ -661,6 +668,7 @@ function finishReload(){
   S.mag[hero.reloadFor] = (S.mag[hero.reloadFor] || 0) + take; S.ammo[w.ammo] -= take; hud();
 }
 function damageZombie(z, dmg, ang){
+  if (z.sleep){ z.sleep = false; z.still = false; z.alert = 10; if (LEVEL) makeNoise(z.x, z.y, 10); }
   z.hp -= dmg; z.flash = 0.08; z.alert = 8; z.kb = 0.12; z.kvx = Math.cos(ang); z.kvy = Math.sin(ang);
   sfx('hit'); spawnPart(z.x, z.y, 1.4, z.type === 'chemist' ? '#9bd44a' : '#8a1f2a', 4, 3, 0.4);
   if (z.hp <= 0) killZombie(z);
@@ -718,10 +726,12 @@ function updateHero(dt){
   if (keys['arrowup'] || keys['w'] || keys['ц']) iy -= 1; if (keys['arrowdown'] || keys['s'] || keys['ы']) iy += 1;
   const mag = Math.min(1, Math.hypot(ix, iy));
   hero.moving = false;
+  if (hero.inCar){ hero.depth = depthOf(hero.x, hero.y); return; }
+  if (hero.air){ heroAir(dt); hero.depth = depthOf(hero.x, hero.y); return; }
   if (!S.dead && !uiBlock() && mag > 0.06){
     const g = unrot(ix, iy), gl = Math.hypot(g[0], g[1]) || 1, gx = g[0]/gl, gy = g[1]/gl;
     const sprint = (input.sprint || keys['shift']) && S.stamina > 2;
-    let sp = (sprint ? 13.5 : 9.0)*mag*SPD_S; if (S.slow > 0) sp *= 0.55;
+    let sp = (sprint ? 13.5 : 9.0)*mag*SPD_S; if (S.slow > 0) sp *= 0.55; if (LEVEL && levelFloor(hero.x, hero.y) === 'balls') sp *= 0.42;
     { const a = P(gx, gy, 0), b = P(0, 0, 0); sp *= Math.min(2.1, SCREEN_REF/Math.max(0.001, Math.hypot(a[0] - b[0], a[1] - b[1]))); }
     if (sprint){ S.stamina = Math.max(0, S.stamina - 22*dt); }
     const ox = hero.x, oy = hero.y;
@@ -844,6 +854,7 @@ const ZOMB_H = {walker: 48, runner: 47, brute: 62, chemist: 49, frost: 49, boss:
 function drawZombiePuppet(c, z){
   const view = pupView(z.fx || 0.3, z.fy || 0.6), h = ZOMB_H[z.type] || 40;
   if (z.dead) return drawPuppet(c, 'zomb', z.type, 5, view, h, {alpha: Math.min(1, z.deadT/1.2), noShadow: true});
+  if (z.sleep || z.wakeT > 0) return drawPuppet(c, 'zomb', z.type, z.wakeT > 0 && z.wakeT < 0.5 ? 4 : 5, view, h, {noShadow: true, flash: z.flash > 0});
   if (z.atkT > 0) return drawPuppet(c, 'zomb', z.type, 4, view, h, {flash: z.flash > 0});
   const ph = (z.walkPx || 0)/(h*CHS*(z.type === 'runner' ? 1.3 : 0.9));
   if (PUP.atlases.zwalk && PUP.atlases.zwalk.rows[z.type] != null && pupReady('zwalk') && !(VSKIP[z.type] && VSKIP[z.type].includes(view[0])))
@@ -934,12 +945,23 @@ const CHAINS = [
     {t: 'talk', who: 'babka', obj: 'Поговорите с бабой Нюрой у «Дзержинца»', lines: [
       D1('Баба Нюра', 'Живой вышел, гляди-ка! Варежка-то красненькая… Видала я её. Девчушка с фонариком и очкастый. Шли к бассейну «Заря», он там внутри всё запирал.'),
       D1('Баба Нюра', 'Мертвяки воды боятся, что ли? Не знаю. Иди, иди, сынок.')], reward: {coins: 30}},
-    {t: 'goto', poi: 'pool', r: 8, obj: 'Доберитесь до бассейна «Заря»', spawn: ['pool', 6, ['walker', 'runner'], 28]},
-    {t: 'defend', poi: 'pool', r: 24, secs: 45, obj: 'Держитесь у бассейна, пока не стихнет', rate: 2.0, types: ['walker', 'runner', 'chemist']},
+    {t: 'goto', poi: 'pool', r: 8, obj: 'Доберитесь до бассейна «Заря»', enter: 'pool', spawn: ['pool', 6, ['walker', 'runner'], 28]},
+    {t: 'collect', level: 'pool', obj: 'Тихо! В чаше спят мертвецы. Пройдите по бортику в тренерскую — не бегите и не стреляйте', items: [{poi: 'p_journal', name: 'Журнал Гордеева'}]},
+    {t: 'intro', level: 'pool', wake: true, obj: 'Журнал', lines: [
+      D1('Журнал · Гордеев', '«…Девочку зовут Ася. Укус затянулся за одну ночь. Ведём её к отцу Николаю, в часовню у ДКХ. Спящих в чаше не будить — их там десятки».'),
+      D1(L, 'Ася жива…'),
+      D1('', 'Сквозняк с грохотом захлопывает дверь тренерской. В чаше начинают шевелиться.'),
+      D1(L, 'Вентили! Если залить чашу, им оттуда не выбраться.')]},
+    {t: 'hold', level: 'pool', obj: 'Откройте три вентиля — удерживайте «Действие»', items: ['p_v1', 'p_v2', 'p_v3'], secs: 2.2, onDone: 'flood'},
+    {t: 'goto', level: 'pool', poi: 'p_exit', r: 3, obj: 'Чаша затоплена. Уходите из «Зари»', exit: true},
     {t: 'talk', who: 'priest', obj: 'Найдите отца Николая у часовни возле ДКХ', lines: [
       D1('Отец Николай', 'Девочку я благословил вчера. Она несла фонарь и всё повторяла: «Лёва приедет». Они ушли в Дворец культуры.'),
       D1('Отец Николай', 'Возьми свечи. И коктейли — прости меня, Господи, — у меня в сторожке их целый ящик.')], give: {mol: 4}, reward: {med: 1}},
-    {t: 'defend', poi: 'cinema', r: 20, secs: 35, obj: 'Включите проектор в «Жюль Верне»: луч держит их', rate: 2.2, types: ['walker', 'runner', 'frost']},
+    {t: 'goto', poi: 'cinema', r: 8, obj: 'Бывший «Ударник», теперь «Жюль Верн». Проберитесь внутрь', enter: 'cinema'},
+    {t: 'goto', level: 'cinema', poi: 'j_booth', r: 3.2, obj: 'Аппаратная заколочена. Допрыгните туда с красного батута', lines: [
+      D1(L, 'Старый кинопроектор. Если он ещё жив — луч их задержит.')]},
+    {t: 'beam', level: 'cinema', poi: 'j_proj', secs: 40, rate: 1.5, types: ['walker', 'runner', 'walker', 'frost'], obj: 'Включите проектор («Действие») и держитесь, пока крутится луч'},
+    {t: 'goto', level: 'cinema', poi: 'j_exit', r: 3, obj: 'Проектор догорел. Уходите из «Жюль Верна»', exit: true},
     // ---- Midpoint
     {t: 'goto', poi: 'dkh', r: 9, obj: 'Войдите в ДКХ', scene: 'dkh', spawn: ['dkh', 7, ['walker', 'frost', 'chemist'], 30], ch: CH3, lines: [
       D1(L, 'Под ротондой… Это её фонарь. Ещё тёплый.'),
@@ -957,7 +979,9 @@ const CHAINS = [
       D1('Серёгин', 'Тогда сам и выкручивайся.'),
       D1('Ася', 'Он стреляет в воздух! Они услышат!')], hide: ['major'], reward: {}},
     {t: 'kill', n: 10, obj: 'Отбейтесь — выстрелы подняли весь квартал', zone: ['kotel', 70], spawn: ['kotel', 12, ['walker', 'runner', 'brute'], 30]},
-    {t: 'escort', who: 'asya', poi: 'kotel', to: 'flame', obj: 'Отведите Асю к Вечному огню', spawn: ['flame', 7, ['walker', 'runner', 'frost'], 40]},
+    {t: 'drive', who: 'asya', poi: 'kotel', car: [-40, -80], to: 'flame', r: 16, obj: 'За котельной «Нива» Леонтьича. Посадите Асю и гоните к Вечному огню', spawn: ['flame', 9, ['walker', 'runner', 'frost', 'walker'], 60], lines: [
+      D1('Ася', 'Ты водишь, как папа. Он тоже по льду боком ездил.'),
+      D1(L, 'Держись. Приехали — огонь горит.')]},
     {t: 'defend', poi: 'flame', r: 24, secs: 60, obj: 'Ночная атака! Удержите огонь', rate: 1.7, types: ['walker', 'runner', 'frost', 'brute', 'chemist'], onStart: 'flameOn'},
     {t: 'talk', who: 'dvornik', obj: 'Леонтьич ранен — подойдите к нему', after: 'leontich', lines: [
       D1('Леонтьич', 'Задели, черти… Ничего, Лёвка. Ты пришёл за ней. Не убежал.'),
@@ -992,7 +1016,7 @@ const CHAINS = [
     {t: 'collect', obj: 'Соберите 3 бутылки у брошенных машин', items: [{poi: 'mall', name: 'Бутылка', dx: 14, dy: 10}, {poi: 'mall', name: 'Бутылка', dx: -15, dy: -6}, {poi: 'arch', name: 'Бутылка', dx: 6, dy: 6}], spawn: ['mall', 5, ['walker', 'runner'], 30]},
     {t: 'talk', who: 'babka', obj: 'Вернитесь к бабе Нюре', lines: [D1('Баба Нюра', 'Вот, держи. Не пей только — это для них.')], give: {weapon: 'obrez', ammo: 10, mol: 4}, reward: {coins: 60}}
   ]},
-  {id: 'side2', title: 'Тир в парке', unlock: 20, steps: [
+  {id: 'side2', title: 'Тир в парке', unlock: 26, steps: [
     {t: 'goto', poi: 'tir', r: 5, obj: 'Обыщите тир Центрального парка', lines: [D1('Тир', 'Под прилавком — коробка патронов и старая ТОЗ-8.')], give: {weapon: 'tozz', ammo: 25}, spawn: ['tir', 6, ['walker', 'frost'], 24]},
     {t: 'kill', n: 6, obj: 'Зачистите аллеи парка', zone: ['park', 110], spawn: ['park', 8, ['walker', 'runner', 'frost'], 40], reward: {coins: 80, ammo: 20}}
   ]}
@@ -1012,6 +1036,9 @@ const Quests = (function(){
     if (s.t === 'choice') return pos(s.opts[0].poi);
     if (s.t === 'collect'){ const it = c.items.find(i => !i.got); return it ? [it.x, it.y] : null; }
     if (s.t === 'escort'){ return c.escortGo ? pos(s.to) : [npcs[s.who].x, npcs[s.who].y]; }
+    if (s.t === 'hold'){ const h = c.hold && c.hold.find(v => v.p < 1); return h ? pos(h.k) : null; }
+    if (s.t === 'beam'){ return c.beamOn ? null : pos(s.poi); }
+    if (s.t === 'drive'){ if (c.boarded) return pos(s.to); return c.car && !driving ? [c.car.x, c.car.y] : [npcs[s.who].x, npcs[s.who].y]; }
     if (s.t === 'boss') return c.boss ? [c.boss.x, c.boss.y] : pos(s.poi);
     if (s.t === 'kill') return pos(s.zone ? s.zone[0] : (s.spawn ? s.spawn[0] : 'square'));
     return pos(s.poi);
@@ -1039,6 +1066,12 @@ const Quests = (function(){
       });
     }
     if (s.t === 'escort'){ const n = npcs[s.who]; const p = freeNear(...pos(s.poi), 0.6); n.x = p[0]; n.y = p[1]; n.follow = false; n.hp = 100; c.waitTalk = true; }
+    if (s.t === 'hold'){ c.hold = s.items.map(k => ({k, p: 0})); }
+    if (s.t === 'beam'){ c.beamOn = false; }
+    if (s.t === 'drive'){
+      const b = pos(s.poi), cp = freeNear(b[0] + s.car[0], b[1] + s.car[1], 3.6); c.car = makeCar(cp[0], cp[1], Math.atan2(pos(s.to)[1] - cp[1], pos(s.to)[0] - cp[0]));
+      const n = npcs[s.who]; const p = freeNear(cp[0] + 2.5, cp[1] + 2.5, 0.5); n.x = p[0]; n.y = p[1]; n.follow = false; n.hidden = false; c.boarded = false;
+    }
     if (s.t === 'boss'){ const p = freeNear(...pos(s.poi), 1.2); const z = makeZombie('boss', p[0], p[1]); z.keep = true; z.questTag = c.def.id; c.boss = z; z.alert = 999; }
     if (s.onStart === 'flameOn') flameLit = true;
     updateUI();
@@ -1047,6 +1080,7 @@ const Quests = (function(){
     const s = cur(c); if (!s) return;
     if (s.enter) enterLevel(s.enter);
     if (s.exit) leaveLevel();
+    if (s.wake) wakeAll();
     if (s.hide) s.hide.forEach(id => { if (npcs[id]){ npcs[id].hidden = true; npcs[id].follow = false; } });
     if (s.give){
       if (s.give.weapon) { giveWeapon(s.give.weapon, s.give.ammo || 0); toast('Получено: ' + WEAPONS[s.give.weapon].name); }
@@ -1073,6 +1107,8 @@ const Quests = (function(){
     const c = trackedChain(); 
     for (const cc of [c].concat(ch.filter(o => o !== c && o.active && !o.done))){
       if (!cc) continue; const s = cur(cc); if (!s) continue;
+      if (s.t === 'beam' && !cc.beamOn && LEVEL){ const p = pos(s.poi); if (Math.hypot(hero.x - p[0], hero.y - p[1]) < 3){ cc.beamOn = true; cc.t = 0;
+        LEVEL.beam = {t: 0, ang: 0, base: Math.atan2(30 - LEVEL.beamAt[1], 30 - LEVEL.beamAt[0])}; LEVEL.off.boothdoor = true; toast('Проектор застрекотал. Баррикада рухнула — они идут!', 3); sfx('boom'); updateUI(); return true; } }
       if (s.t === 'talk'){
         const n = npcs[s.who]; if (n && !n.hidden && Math.hypot(n.x - hero.x, n.y - hero.y) < 4.2){ say(s.lines, () => finishStep(cc), s); return true; }
       }
@@ -1084,6 +1120,8 @@ const Quests = (function(){
   }
   function canInteract(){
     for (const cc of ch){ if (!cc.active || cc.done) continue; const s = cur(cc); if (!s) continue;
+      if (s.t === 'hold' && cc.hold && cc.hold.some(v => v.p < 1 && v.near)) return 'valve';
+      if (s.t === 'beam' && !cc.beamOn){ const p = pos(s.poi); if (Math.hypot(hero.x - p[0], hero.y - p[1]) < 3) return 'proj'; }
       if (s.t === 'talk'){ const n = npcs[s.who]; if (n && !n.hidden && Math.hypot(n.x - hero.x, n.y - hero.y) < 4.2) return s.who; }
       if (s.t === 'escort' && cc.waitTalk){ const n = npcs[s.who]; if (n && Math.hypot(n.x - hero.x, n.y - hero.y) < 4.2) return s.who; }
     }
@@ -1115,6 +1153,28 @@ const Quests = (function(){
         c.prog = Math.min(s.secs, c.t);
         if (c.t >= s.secs){ zombies.forEach(z => { if (z.questTag === c.def.id) z.hp = 0; }); finishStep(c); }
         if (c.t > 0.5 && c.lastToast !== inz){ c.lastToast = inz; if (!inz) toast('Вернитесь в зону обороны!'); }
+      } else if (s.t === 'hold'){
+        const held = input.act || keys['e'] || keys['у'];
+        for (const v of c.hold){ if (v.p >= 1) continue; const p = pos(v.k); v.near = Math.hypot(hero.x - p[0], hero.y - p[1]) < 2.2;
+          if (v.near && held){ v.p = Math.min(1, v.p + dt/s.secs); if (Math.random() < dt*6) sfx('click'); if (v.p >= 1){ toast('Вентиль открыт (' + c.hold.filter(h => h.p >= 1).length + '/' + c.hold.length + ')'); haptic('medium'); updateUI(); } } }
+        c.prog = c.hold.filter(h => h.p >= 1).length;
+        if (c.prog >= c.hold.length && !c.doneHold){ c.doneHold = true; if (s.onDone === 'flood' && LEVEL){ LEVEL.flooding = true; toast('Вода хлынула в чашу!', 3); } c.t = 0; }
+        if (c.doneHold){ c.t += dt; if (c.t > 3.8) finishStep(c); }
+      } else if (s.t === 'beam'){
+        if (c.beamOn){ c.t += dt; c.prog = Math.min(s.secs, c.t); c.spT = (c.spT || 0) - dt;
+          if (c.spT <= 0 && zombies.length < 20 && LEVEL){ c.spT = s.rate; const doors = [[4, 46], [66, 46], [35, 49]], d = doors[Math.floor(Math.random()*3)], w = lvW(LEVEL, d[0], d[1]);
+            const z = makeZombie(s.types[Math.floor(Math.random()*s.types.length)], w[0], w[1]); z.alert = 30; z.frenzy = true; z.keep = true; z.questTag = c.def.id; }
+          if (c.t >= s.secs){ if (LEVEL) LEVEL.beam = null; zombies.forEach(z => { if (z.questTag === c.def.id) z.hp = Math.min(z.hp, 1); }); finishStep(c); }
+          if (Math.floor(c.t) !== c.lastSec){ c.lastSec = Math.floor(c.t); updateUI(); }
+        }
+      } else if (s.t === 'drive'){
+        const n = npcs[s.who], car = c.car, tgt = pos(s.to);
+        if (!c.boarded && driving === car && Math.hypot(n.x - car.x, n.y - car.y) < 7){ c.boarded = true; n.hidden = true; toast('Ася села в машину'); updateUI(); }
+        if (c.boarded && car.wrecked && n.hidden){ const p = freeNear(car.x + 2, car.y + 2, 0.5); n.x = p[0]; n.y = p[1]; n.hidden = false; n.follow = true; updateUI(); }
+        const there = car.wrecked ? (Math.hypot(n.x - tgt[0], n.y - tgt[1]) < s.r && Math.hypot(hero.x - tgt[0], hero.y - tgt[1]) < s.r)
+                                  : (c.boarded && Math.hypot(car.x - tgt[0], car.y - tgt[1]) < s.r && car.speed < 4);
+        if (there && !c.said && !dlgLines){ c.said = true; if (driving) exitCar(true); const p = freeNear(car.x + 2.5, car.y - 2, 0.5); n.x = p[0]; n.y = p[1]; n.hidden = false; n.follow = false;
+          say(s.lines, () => finishStep(c), s); }
       } else if (s.t === 'escort'){
         const n = npcs[s.who];
         if (n.follow){
@@ -1142,6 +1202,9 @@ const Quests = (function(){
     if (s.t === 'collect') txt += ' (' + c.prog + '/' + c.items.length + ')';
     if (s.t === 'defend') txt += ' (' + Math.floor(c.prog) + '/' + s.secs + ' с)';
     if (s.t === 'escort' && c.waitTalk) txt = 'Подойдите к ' + (npcs[s.who] ? npcs[s.who].name : '') + ' и поговорите';
+    if (s.t === 'drive') txt = c.boarded ? (c.car && c.car.wrecked ? 'Машина разбита — бегите с Асей к Вечному огню' : 'Гоните к Вечному огню! (ручник — «Бег»)') : (driving ? 'Подъедьте к Асе' : s.obj + ' (сесть — «Действие»)');
+    if (s.t === 'hold') txt += ' (' + (c.prog || 0) + '/' + s.items.length + ')';
+    if (s.t === 'beam' && c.beamOn) txt = 'Держитесь, пока работает проектор (' + Math.floor(c.prog || 0) + '/' + s.secs + ' с)';
     if (s.t === 'choice') txt += ': ' + s.opts.map(o => o.label).join(' или ');
     elT.textContent = c.def.main ? (S.chapter || 'Основное') + ' · ' + c.def.title : 'Побочное · ' + c.def.title;
     elO.textContent = txt; elP.style.width = Math.round(100*c.si/c.def.steps.length) + '%';
@@ -1153,29 +1216,35 @@ const Quests = (function(){
   }
   function itemsToDraw(){ const out = []; ch.forEach(c => { if (c.active && !c.done) c.items.forEach(i => { if (!i.got) out.push(i); }); }); return out; }
   function defendInfo(){ const c = trackedChain(); if (!c) return null; const s = cur(c); return s && s.t === 'defend' ? {p: pos(s.poi), r: s.r} : null; }
-  return {update, interact, canInteract, onKill, onNpcDead, updateUI, targets, itemsToDraw, defendInfo, levelWanted(){ for (const c of ch){ if (!c.active || c.done) continue; const s = cur(c); if (s && s.level) return s.level; } return null; }, curType(){ const c = ch[0]; const s = c && cur(c); return s ? s.t : null; }, chains: ch, progressCount: () => completed, cycle(){ for (let k = 1; k <= ch.length; k++){ const i = (tracked + k)%ch.length; if (ch[i].active && !ch[i].done){ tracked = i; break; } } updateUI(); }, start(){ ch.forEach(c => { if (c.active) beginStep(c); }); updateUI(); }};
+  return {update, interact, canInteract, onKill, onNpcDead, updateUI, targets, itemsToDraw, defendInfo, holdInfo(){ const c = trackedChain(); if (!c) return null; const s = cur(c); if (!s || s.t !== 'hold' || !c.hold) return null; return c.hold.map(v => ({x: pos(v.k)[0], y: pos(v.k)[1], p: v.p})); }, levelWanted(){ for (const c of ch){ if (!c.active || c.done) continue; const s = cur(c); if (s && s.level) return s.level; } return null; }, curType(){ const c = ch[0]; const s = c && cur(c); return s ? s.t : null; }, chains: ch, progressCount: () => completed, cycle(){ for (let k = 1; k <= ch.length; k++){ const i = (tracked + k)%ch.length; if (ch[i].active && !ch[i].done){ tracked = i; break; } } updateUI(); }, start(){ ch.forEach(c => { if (c.active) beginStep(c); }); updateUI(); }};
 })();
 let flameLit = false;
 
 // ---------------------------------------------------------------- interior levels (ТЦ «Дзержинец»)
 // An interior lives far away from the city in the same world space (grid offset OX/OY), so the usual
 // systems (zombies, pickups, quests, projection) work unchanged; collision, background, light and map are swapped.
-const LEVELS = {mall: {"OX": 3000.0, "OY": 3000.0, "GW": 84, "GH": 52, "rects": [{"x0": 0, "y0": 0, "x1": 84, "y1": 0.4, "h": 4.2, "k": "wall", "c": [150, 140, 160]}, {"x0": 0, "y0": 0, "x1": 0.4, "y1": 52, "h": 4.2, "k": "wall", "c": [150, 140, 160]}, {"x0": 83.6, "y0": 0, "x1": 84, "y1": 52, "h": 1.0, "k": "wall", "c": [150, 140, 160]}, {"x0": 0, "y0": 51.6, "x1": 36, "y1": 52, "h": 1.0, "k": "wall", "c": [150, 140, 160]}, {"x0": 48, "y0": 51.6, "x1": 84, "y1": 52, "h": 1.0, "k": "wall", "c": [150, 140, 160]}, {"x0": 19.8, "y0": 0, "x1": 20.2, "y1": 12, "h": 1.3, "k": "wall", "c": [170, 160, 175]}, {"x0": 43.8, "y0": 0, "x1": 44.2, "y1": 12, "h": 1.3, "k": "wall", "c": [170, 160, 175]}, {"x0": 63.8, "y0": 0, "x1": 64.2, "y1": 12, "h": 1.3, "k": "wall", "c": [170, 160, 175]}, {"x0": 0, "y0": 11.8, "x1": 8, "y1": 12.2, "h": 1.3, "k": "wall", "c": [170, 160, 175]}, {"x0": 12, "y0": 11.8, "x1": 20, "y1": 12.2, "h": 1.3, "k": "wall", "c": [170, 160, 175]}, {"x0": 20, "y0": 11.8, "x1": 30, "y1": 12.2, "h": 1.3, "k": "wall", "c": [170, 160, 175]}, {"x0": 34, "y0": 11.8, "x1": 44, "y1": 12.2, "h": 1.3, "k": "wall", "c": [170, 160, 175]}, {"x0": 44, "y0": 11.8, "x1": 52, "y1": 12.2, "h": 1.3, "k": "wall", "c": [170, 160, 175]}, {"x0": 56, "y0": 11.8, "x1": 64, "y1": 12.2, "h": 1.3, "k": "wall", "c": [170, 160, 175]}, {"x0": 64, "y0": 11.8, "x1": 72, "y1": 12.2, "h": 1.3, "k": "wall", "c": [170, 160, 175]}, {"x0": 76, "y0": 11.8, "x1": 84, "y1": 12.2, "h": 1.3, "k": "wall", "c": [170, 160, 175]}, {"x0": 13.8, "y0": 12, "x1": 14.2, "y1": 19, "h": 1.3, "k": "wall", "c": [170, 160, 175]}, {"x0": 13.8, "y0": 23, "x1": 14.2, "y1": 30, "h": 1.3, "k": "wall", "c": [170, 160, 175]}, {"x0": 0, "y0": 29.8, "x1": 14, "y1": 30.2, "h": 1.3, "k": "wall", "c": [170, 160, 175]}, {"x0": 69.8, "y0": 12, "x1": 70.2, "y1": 22, "h": 1.3, "k": "wall", "c": [170, 160, 175]}, {"x0": 69.8, "y0": 26, "x1": 70.2, "y1": 40, "h": 1.3, "k": "wall", "c": [170, 160, 175]}, {"x0": 70, "y0": 39.8, "x1": 84, "y1": 40.2, "h": 1.3, "k": "wall", "c": [170, 160, 175]}, {"x0": 59.8, "y0": 44, "x1": 60.2, "y1": 52, "h": 1.3, "k": "wall", "c": [170, 160, 175]}, {"x0": 40, "y0": 22, "x1": 46, "y1": 28, "h": 0.9, "k": "fountain", "c": [120, 150, 170]}, {"x0": 30, "y0": 15, "x1": 33, "y1": 25, "h": 2.2, "k": "escalator", "c": [110, 110, 120]}, {"x0": 2, "y0": 2, "x1": 18, "y1": 3.4, "h": 1.8, "k": "shelf", "c": [200, 210, 200]}, {"x0": 6, "y0": 7, "x1": 14, "y1": 8.2, "h": 1.1, "k": "counter", "c": [220, 220, 225]}, {"x0": 22, "y0": 3, "x1": 42, "y1": 4.2, "h": 1.6, "k": "shelf", "c": [190, 120, 90]}, {"x0": 22, "y0": 6.5, "x1": 42, "y1": 7.7, "h": 1.6, "k": "shelf", "c": [190, 120, 90]}, {"x0": 24, "y0": 9.6, "x1": 30, "y1": 10.6, "h": 1.0, "k": "counter", "c": [160, 160, 170]}, {"x0": 34, "y0": 9.6, "x1": 40, "y1": 10.6, "h": 1.0, "k": "counter", "c": [160, 160, 170]}, {"x0": 46, "y0": 2, "x1": 62, "y1": 3.2, "h": 1.7, "k": "shelf", "c": [90, 110, 150]}, {"x0": 48, "y0": 6, "x1": 54, "y1": 8, "h": 1.0, "k": "table", "c": [80, 90, 120]}, {"x0": 56, "y0": 6, "x1": 62, "y1": 8, "h": 1.0, "k": "table", "c": [80, 90, 120]}, {"x0": 66, "y0": 2, "x1": 82, "y1": 3.2, "h": 1.6, "k": "shelf", "c": [220, 140, 160]}, {"x0": 68, "y0": 6, "x1": 72, "y1": 9, "h": 0.8, "k": "table", "c": [240, 200, 120]}, {"x0": 76, "y0": 6, "x1": 81, "y1": 8, "h": 0.9, "k": "table", "c": [120, 190, 200]}, {"x0": 2, "y0": 14, "x1": 4.4, "y1": 16.4, "h": 1.4, "k": "crate", "c": [150, 120, 80]}, {"x0": 5, "y0": 14, "x1": 7.4, "y1": 16.4, "h": 1.4, "k": "crate", "c": [150, 120, 80]}, {"x0": 2, "y0": 18, "x1": 4.4, "y1": 20.4, "h": 1.4, "k": "crate", "c": [150, 120, 80]}, {"x0": 8, "y0": 25, "x1": 10.4, "y1": 27.4, "h": 1.4, "k": "crate", "c": [150, 120, 80]}, {"x0": 2, "y0": 25, "x1": 4.4, "y1": 27.4, "h": 1.4, "k": "crate", "c": [150, 120, 80]}, {"x0": 73, "y0": 15, "x1": 81, "y1": 15.8, "h": 1.5, "k": "rack", "c": [160, 100, 140]}, {"x0": 73, "y0": 21, "x1": 81, "y1": 21.8, "h": 1.5, "k": "rack", "c": [160, 100, 140]}, {"x0": 73, "y0": 29, "x1": 81, "y1": 29.8, "h": 1.5, "k": "rack", "c": [160, 100, 140]}, {"x0": 73, "y0": 34, "x1": 81, "y1": 34.8, "h": 1.5, "k": "rack", "c": [160, 100, 140]}, {"x0": 4, "y0": 36, "x1": 6.5, "y1": 38.5, "h": 0.8, "k": "table", "c": [200, 170, 110]}, {"x0": 4, "y0": 42, "x1": 6.5, "y1": 44.5, "h": 0.8, "k": "table", "c": [200, 170, 110]}, {"x0": 10, "y0": 36, "x1": 12.5, "y1": 38.5, "h": 0.8, "k": "table", "c": [200, 170, 110]}, {"x0": 10, "y0": 42, "x1": 12.5, "y1": 44.5, "h": 0.8, "k": "table", "c": [200, 170, 110]}, {"x0": 16, "y0": 36, "x1": 18.5, "y1": 38.5, "h": 0.8, "k": "table", "c": [200, 170, 110]}, {"x0": 16, "y0": 42, "x1": 18.5, "y1": 44.5, "h": 0.8, "k": "table", "c": [200, 170, 110]}, {"x0": 2, "y0": 47, "x1": 22, "y1": 49, "h": 1.1, "k": "counter", "c": [180, 90, 70]}, {"x0": 62, "y0": 49, "x1": 82, "y1": 50.6, "h": 1.8, "k": "shelf", "c": [120, 140, 100]}, {"x0": 66, "y0": 43, "x1": 72, "y1": 45, "h": 1.0, "k": "table", "c": [110, 110, 110]}, {"x0": 50, "y0": 34, "x1": 56, "y1": 35.4, "h": 1.1, "k": "barricade", "c": [90, 90, 100]}, {"x0": 18, "y0": 26, "x1": 24, "y1": 27.4, "h": 1.1, "k": "barricade", "c": [90, 90, 100]}], "zones": {"Аптека": [10, 6], "Продукты": [32, 6], "Электроника": [54, 6], "Детский мир": [74, 6], "Склад": [7, 21], "Одежда": [77, 26], "Фуд-корт": [13, 40], "Хозтовары": [72, 46], "Атриум": [42, 31]}, "pois": {"m_enter": [42, 49], "m_exit": [42, 50.5], "m_apteka": [9, 9.5], "m_electro": [51, 9.5], "m_kids": [70, 10.5], "m_food": [13, 45]}, "spawns": [[10, 6, "walker"], [32, 8, "brute"], [26, 4.8, "walker"], [55, 4.5, "runner"], [77, 10, "walker"], [7, 21, "chemist"], [77, 31, "walker"], [12, 39, "walker"], [18, 44, "runner"], [66, 47, "walker"], [60, 28, "walker"], [24, 30, "walker"]], "lights": [[42, 25, "cold"], [10, 10, "red"], [54, 10, "red"], [74, 10, "cold"], [13, 44, "warm"], [42, 46, "cold"], [77, 30, "red"]], "prect": [-486.0, 16446.978, 310.0, 16898.0], "img": [2048, 1160]}};
+const LEVELS = {mall: {"OX": 3000.0, "OY": 3000.0, "GW": 84, "GH": 52, "rects": [{"x0": 0, "y0": 0, "x1": 84, "y1": 0.4, "h": 4.2, "k": "wall", "c": [150, 140, 160]}, {"x0": 0, "y0": 0, "x1": 0.4, "y1": 52, "h": 4.2, "k": "wall", "c": [150, 140, 160]}, {"x0": 83.6, "y0": 0, "x1": 84, "y1": 52, "h": 1.0, "k": "wall", "c": [150, 140, 160]}, {"x0": 0, "y0": 51.6, "x1": 36, "y1": 52, "h": 1.0, "k": "wall", "c": [150, 140, 160]}, {"x0": 48, "y0": 51.6, "x1": 84, "y1": 52, "h": 1.0, "k": "wall", "c": [150, 140, 160]}, {"x0": 19.8, "y0": 0, "x1": 20.2, "y1": 12, "h": 1.3, "k": "wall", "c": [170, 160, 175]}, {"x0": 43.8, "y0": 0, "x1": 44.2, "y1": 12, "h": 1.3, "k": "wall", "c": [170, 160, 175]}, {"x0": 63.8, "y0": 0, "x1": 64.2, "y1": 12, "h": 1.3, "k": "wall", "c": [170, 160, 175]}, {"x0": 0, "y0": 11.8, "x1": 8, "y1": 12.2, "h": 1.3, "k": "wall", "c": [170, 160, 175]}, {"x0": 12, "y0": 11.8, "x1": 20, "y1": 12.2, "h": 1.3, "k": "wall", "c": [170, 160, 175]}, {"x0": 20, "y0": 11.8, "x1": 30, "y1": 12.2, "h": 1.3, "k": "wall", "c": [170, 160, 175]}, {"x0": 34, "y0": 11.8, "x1": 44, "y1": 12.2, "h": 1.3, "k": "wall", "c": [170, 160, 175]}, {"x0": 44, "y0": 11.8, "x1": 52, "y1": 12.2, "h": 1.3, "k": "wall", "c": [170, 160, 175]}, {"x0": 56, "y0": 11.8, "x1": 64, "y1": 12.2, "h": 1.3, "k": "wall", "c": [170, 160, 175]}, {"x0": 64, "y0": 11.8, "x1": 72, "y1": 12.2, "h": 1.3, "k": "wall", "c": [170, 160, 175]}, {"x0": 76, "y0": 11.8, "x1": 84, "y1": 12.2, "h": 1.3, "k": "wall", "c": [170, 160, 175]}, {"x0": 13.8, "y0": 12, "x1": 14.2, "y1": 19, "h": 1.3, "k": "wall", "c": [170, 160, 175]}, {"x0": 13.8, "y0": 23, "x1": 14.2, "y1": 30, "h": 1.3, "k": "wall", "c": [170, 160, 175]}, {"x0": 0, "y0": 29.8, "x1": 14, "y1": 30.2, "h": 1.3, "k": "wall", "c": [170, 160, 175]}, {"x0": 69.8, "y0": 12, "x1": 70.2, "y1": 22, "h": 1.3, "k": "wall", "c": [170, 160, 175]}, {"x0": 69.8, "y0": 26, "x1": 70.2, "y1": 40, "h": 1.3, "k": "wall", "c": [170, 160, 175]}, {"x0": 70, "y0": 39.8, "x1": 84, "y1": 40.2, "h": 1.3, "k": "wall", "c": [170, 160, 175]}, {"x0": 59.8, "y0": 44, "x1": 60.2, "y1": 52, "h": 1.3, "k": "wall", "c": [170, 160, 175]}, {"x0": 40, "y0": 22, "x1": 46, "y1": 28, "h": 0.9, "k": "fountain", "c": [120, 150, 170]}, {"x0": 30, "y0": 15, "x1": 33, "y1": 25, "h": 2.2, "k": "escalator", "c": [110, 110, 120]}, {"x0": 2, "y0": 2, "x1": 18, "y1": 3.4, "h": 1.8, "k": "shelf", "c": [200, 210, 200]}, {"x0": 6, "y0": 7, "x1": 14, "y1": 8.2, "h": 1.1, "k": "counter", "c": [220, 220, 225]}, {"x0": 22, "y0": 3, "x1": 42, "y1": 4.2, "h": 1.6, "k": "shelf", "c": [190, 120, 90]}, {"x0": 22, "y0": 6.5, "x1": 42, "y1": 7.7, "h": 1.6, "k": "shelf", "c": [190, 120, 90]}, {"x0": 24, "y0": 9.6, "x1": 30, "y1": 10.6, "h": 1.0, "k": "counter", "c": [160, 160, 170]}, {"x0": 34, "y0": 9.6, "x1": 40, "y1": 10.6, "h": 1.0, "k": "counter", "c": [160, 160, 170]}, {"x0": 46, "y0": 2, "x1": 62, "y1": 3.2, "h": 1.7, "k": "shelf", "c": [90, 110, 150]}, {"x0": 48, "y0": 6, "x1": 54, "y1": 8, "h": 1.0, "k": "table", "c": [80, 90, 120]}, {"x0": 56, "y0": 6, "x1": 62, "y1": 8, "h": 1.0, "k": "table", "c": [80, 90, 120]}, {"x0": 66, "y0": 2, "x1": 82, "y1": 3.2, "h": 1.6, "k": "shelf", "c": [220, 140, 160]}, {"x0": 68, "y0": 6, "x1": 72, "y1": 9, "h": 0.8, "k": "table", "c": [240, 200, 120]}, {"x0": 76, "y0": 6, "x1": 81, "y1": 8, "h": 0.9, "k": "table", "c": [120, 190, 200]}, {"x0": 2, "y0": 14, "x1": 4.4, "y1": 16.4, "h": 1.4, "k": "crate", "c": [150, 120, 80]}, {"x0": 5, "y0": 14, "x1": 7.4, "y1": 16.4, "h": 1.4, "k": "crate", "c": [150, 120, 80]}, {"x0": 2, "y0": 18, "x1": 4.4, "y1": 20.4, "h": 1.4, "k": "crate", "c": [150, 120, 80]}, {"x0": 8, "y0": 25, "x1": 10.4, "y1": 27.4, "h": 1.4, "k": "crate", "c": [150, 120, 80]}, {"x0": 2, "y0": 25, "x1": 4.4, "y1": 27.4, "h": 1.4, "k": "crate", "c": [150, 120, 80]}, {"x0": 73, "y0": 15, "x1": 81, "y1": 15.8, "h": 1.5, "k": "rack", "c": [160, 100, 140]}, {"x0": 73, "y0": 21, "x1": 81, "y1": 21.8, "h": 1.5, "k": "rack", "c": [160, 100, 140]}, {"x0": 73, "y0": 29, "x1": 81, "y1": 29.8, "h": 1.5, "k": "rack", "c": [160, 100, 140]}, {"x0": 73, "y0": 34, "x1": 81, "y1": 34.8, "h": 1.5, "k": "rack", "c": [160, 100, 140]}, {"x0": 4, "y0": 36, "x1": 6.5, "y1": 38.5, "h": 0.8, "k": "table", "c": [200, 170, 110]}, {"x0": 4, "y0": 42, "x1": 6.5, "y1": 44.5, "h": 0.8, "k": "table", "c": [200, 170, 110]}, {"x0": 10, "y0": 36, "x1": 12.5, "y1": 38.5, "h": 0.8, "k": "table", "c": [200, 170, 110]}, {"x0": 10, "y0": 42, "x1": 12.5, "y1": 44.5, "h": 0.8, "k": "table", "c": [200, 170, 110]}, {"x0": 16, "y0": 36, "x1": 18.5, "y1": 38.5, "h": 0.8, "k": "table", "c": [200, 170, 110]}, {"x0": 16, "y0": 42, "x1": 18.5, "y1": 44.5, "h": 0.8, "k": "table", "c": [200, 170, 110]}, {"x0": 2, "y0": 47, "x1": 22, "y1": 49, "h": 1.1, "k": "counter", "c": [180, 90, 70]}, {"x0": 62, "y0": 49, "x1": 82, "y1": 50.6, "h": 1.8, "k": "shelf", "c": [120, 140, 100]}, {"x0": 66, "y0": 43, "x1": 72, "y1": 45, "h": 1.0, "k": "table", "c": [110, 110, 110]}, {"x0": 50, "y0": 34, "x1": 56, "y1": 35.4, "h": 1.1, "k": "barricade", "c": [90, 90, 100]}, {"x0": 18, "y0": 26, "x1": 24, "y1": 27.4, "h": 1.1, "k": "barricade", "c": [90, 90, 100]}], "zones": {"Аптека": [10, 6], "Продукты": [32, 6], "Электроника": [54, 6], "Детский мир": [74, 6], "Склад": [7, 21], "Одежда": [77, 26], "Фуд-корт": [13, 40], "Хозтовары": [72, 46], "Атриум": [42, 31]}, "pois": {"m_enter": [42, 49], "m_exit": [42, 50.5], "m_apteka": [9, 9.5], "m_electro": [51, 9.5], "m_kids": [70, 10.5], "m_food": [13, 45]}, "spawns": [[10, 6, "walker"], [32, 8, "brute"], [26, 4.8, "walker"], [55, 4.5, "runner"], [77, 10, "walker"], [7, 21, "chemist"], [77, 31, "walker"], [12, 39, "walker"], [18, 44, "runner"], [66, 47, "walker"], [60, 28, "walker"], [24, 30, "walker"]], "lights": [[42, 25, "cold"], [10, 10, "red"], [54, 10, "red"], [74, 10, "cold"], [13, 44, "warm"], [42, 46, "cold"], [77, 30, "red"]], "prect": [-486.0, 16446.978, 310.0, 16898.0], "img": [2048, 1160]}, pool: {"OX": 6000.0, "OY": 6000.0, "GW": 72, "GH": 50, "rects": [{"x0": 0, "y0": 0, "x1": 72, "y1": 0.4, "h": 5.0, "k": "wall", "c": [120, 150, 170]}, {"x0": 0, "y0": 0, "x1": 0.4, "y1": 50, "h": 5.0, "k": "wall", "c": [150, 160, 170]}, {"x0": 71.6, "y0": 0, "x1": 72, "y1": 50, "h": 1.0, "k": "wall", "c": [150, 160, 170]}, {"x0": 0, "y0": 49.6, "x1": 30, "y1": 50, "h": 1.0, "k": "wall", "c": [150, 160, 170]}, {"x0": 40, "y0": 49.6, "x1": 72, "y1": 50, "h": 1.0, "k": "wall", "c": [150, 160, 170]}, {"x0": 8, "y0": 0.4, "x1": 64, "y1": 2.2, "h": 2.4, "k": "bleacher", "c": [190, 120, 90]}, {"x0": 8, "y0": 2.2, "x1": 64, "y1": 4.0, "h": 1.7, "k": "bleacher", "c": [190, 120, 90]}, {"x0": 8, "y0": 4.0, "x1": 64, "y1": 5.8, "h": 1.0, "k": "bleacher", "c": [190, 120, 90]}, {"x0": 12.6, "y0": 10, "x1": 14, "y1": 34, "h": 0.25, "k": "curb", "c": [230, 230, 235]}, {"x0": 56, "y0": 10, "x1": 57.4, "y1": 34, "h": 0.25, "k": "curb", "c": [230, 230, 235]}, {"x0": 59, "y0": 18, "x1": 63, "y1": 26, "h": 3.6, "k": "tower", "c": [200, 200, 205]}, {"x0": 0, "y0": 37.8, "x1": 6, "y1": 38.2, "h": 1.3, "k": "wall", "c": [175, 185, 195]}, {"x0": 10, "y0": 37.8, "x1": 14, "y1": 38.2, "h": 1.3, "k": "wall", "c": [175, 185, 195]}, {"x0": 13.8, "y0": 38, "x1": 14.2, "y1": 50, "h": 1.3, "k": "wall", "c": [175, 185, 195]}, {"x0": 2, "y0": 44, "x1": 8, "y1": 46, "h": 1.0, "k": "desk", "c": [140, 100, 70]}, {"x0": 10, "y0": 46, "x1": 13.4, "y1": 49.4, "h": 1.8, "k": "cabinet", "c": [110, 90, 70]}, {"x0": 57.8, "y0": 38, "x1": 58.2, "y1": 44, "h": 1.3, "k": "wall", "c": [175, 185, 195]}, {"x0": 58, "y0": 37.8, "x1": 72, "y1": 38.2, "h": 1.3, "k": "wall", "c": [175, 185, 195]}, {"x0": 61, "y0": 41, "x1": 70, "y1": 42, "h": 2.0, "k": "lockers", "c": [90, 120, 160]}, {"x0": 61, "y0": 45, "x1": 70, "y1": 46, "h": 2.0, "k": "lockers", "c": [90, 120, 160]}, {"x0": 20, "y0": 40, "x1": 30, "y1": 41, "h": 0.6, "k": "bench", "c": [170, 140, 100]}, {"x0": 44, "y0": 40, "x1": 54, "y1": 41, "h": 0.6, "k": "bench", "c": [170, 140, 100]}, {"x0": 9.5, "y0": 19.5, "x1": 10.5, "y1": 20.5, "h": 1.1, "k": "valve", "c": [200, 60, 50]}, {"x0": 34.5, "y0": 36.0, "x1": 35.5, "y1": 37.0, "h": 1.1, "k": "valve", "c": [200, 60, 50]}, {"x0": 58.0, "y0": 11.5, "x1": 59.0, "y1": 12.5, "h": 1.1, "k": "valve", "c": [200, 60, 50]}], "floor": [{"x0": 14, "y0": 10, "x1": 56, "y1": 34, "k": "pit", "c": [120, 170, 190]}], "zones": {"Чаша": [35, 22], "Трибуны": [36, 3], "Тренерская": [7, 43], "Раздевалка": [65, 44], "Вышка": [61, 22]}, "pois": {"p_enter": [35, 47.5], "p_exit": [35, 49], "p_journal": [5, 42], "p_v1": [10, 21.5], "p_v2": [35, 38], "p_v3": [58.5, 13.6]}, "spawns": [[20, 14, "walker"], [27, 20, "walker"], [33, 28, "walker"], [40, 15, "brute"], [46, 24, "walker"], [52, 30, "runner"], [24, 30, "walker"], [38, 22, "walker"], [50, 13, "walker"], [30, 12, "runner"], [44, 31, "chemist"], [18, 24, "walker"]], "lights": [[35, 22, "cold"], [61, 22, "cold"], [7, 43, "warm"], [65, 42, "red"], [35, 45, "cold"], [10, 20, "red"], [58.5, 12, "red"]], "prect": [-420.0, 32944.905, 299.0, 33359.5], "img": [2048, 1181], "outside": "pool", "enter": "p_enter", "pit": [14, 10, 56, 34]}, cinema: {"OX": 9000.0, "OY": 9000.0, "GW": 70, "GH": 50, "rects": [{"x0": 0, "y0": 0, "x1": 70, "y1": 0.4, "h": 5.0, "k": "wall", "c": [110, 90, 140]}, {"x0": 0, "y0": 0, "x1": 0.4, "y1": 50, "h": 5.0, "k": "wall", "c": [110, 90, 140]}, {"x0": 69.6, "y0": 0, "x1": 70, "y1": 50, "h": 1.0, "k": "wall", "c": [150, 140, 170]}, {"x0": 0, "y0": 49.6, "x1": 30, "y1": 50, "h": 1.0, "k": "wall", "c": [150, 140, 170]}, {"x0": 40, "y0": 49.6, "x1": 70, "y1": 50, "h": 1.0, "k": "wall", "c": [150, 140, 170]}, {"x0": 6, "y0": 7.8, "x1": 34, "y1": 8.2, "h": 1.0, "k": "pad", "c": [90, 160, 210]}, {"x0": 5.8, "y0": 8, "x1": 6.2, "y1": 28, "h": 1.0, "k": "pad", "c": [90, 160, 210]}, {"x0": 6, "y0": 27.8, "x1": 16, "y1": 28.2, "h": 1.0, "k": "pad", "c": [90, 160, 210]}, {"x0": 20, "y0": 27.8, "x1": 34, "y1": 28.2, "h": 1.0, "k": "pad", "c": [90, 160, 210]}, {"x0": 33.8, "y0": 8, "x1": 34.2, "y1": 14, "h": 1.0, "k": "pad", "c": [90, 160, 210]}, {"x0": 33.8, "y0": 18, "x1": 34.2, "y1": 28, "h": 1.0, "k": "pad", "c": [90, 160, 210]}, {"x0": 37, "y0": 5.8, "x1": 53, "y1": 6.2, "h": 0.8, "k": "pad", "c": [240, 200, 80]}, {"x0": 52.8, "y0": 6, "x1": 53.2, "y1": 24, "h": 0.8, "k": "pad", "c": [240, 200, 80]}, {"x0": 36.8, "y0": 6, "x1": 37.2, "y1": 13, "h": 0.8, "k": "pad", "c": [240, 200, 80]}, {"x0": 36.8, "y0": 17, "x1": 37.2, "y1": 24, "h": 0.8, "k": "pad", "c": [240, 200, 80]}, {"x0": 55.8, "y0": 0, "x1": 56.2, "y1": 15, "h": 1.6, "k": "wall", "c": [120, 110, 130]}, {"x0": 56, "y0": 14.8, "x1": 60, "y1": 15.2, "h": 1.6, "k": "wall", "c": [120, 110, 130]}, {"x0": 64, "y0": 14.8, "x1": 70, "y1": 15.2, "h": 1.6, "k": "wall", "c": [120, 110, 130]}, {"x0": 60, "y0": 14.8, "x1": 64, "y1": 15.2, "h": 1.4, "k": "barricade", "c": [100, 80, 60], "id": "boothdoor"}, {"x0": 61, "y0": 3, "x1": 67, "y1": 6, "h": 1.4, "k": "projector", "c": [60, 60, 70]}, {"x0": 8, "y0": 34, "x1": 20, "y1": 44, "h": 2.6, "k": "frame", "c": [220, 180, 60]}, {"x0": 42, "y0": 42, "x1": 50, "y1": 44, "h": 1.1, "k": "desk", "c": [160, 60, 80]}, {"x0": 56, "y0": 30, "x1": 58.4, "y1": 32.4, "h": 0.8, "k": "table", "c": [200, 170, 120]}, {"x0": 62, "y0": 30, "x1": 64.4, "y1": 32.4, "h": 0.8, "k": "table", "c": [200, 170, 120]}, {"x0": 56, "y0": 36, "x1": 58.4, "y1": 38.4, "h": 0.8, "k": "table", "c": [200, 170, 120]}, {"x0": 62, "y0": 36, "x1": 64.4, "y1": 38.4, "h": 0.8, "k": "table", "c": [200, 170, 120]}, {"x0": 24, "y0": 36, "x1": 30, "y1": 37.4, "h": 1.1, "k": "barricade", "c": [100, 90, 90]}], "floor": [{"x0": 9, "y0": 11, "x1": 14, "y1": 16, "k": "tramp", "c": [60, 70, 160]}, {"x0": 17, "y0": 11, "x1": 22, "y1": 16, "k": "tramp", "c": [60, 70, 160]}, {"x0": 25, "y0": 11, "x1": 30, "y1": 16, "k": "tramp", "c": [60, 70, 160]}, {"x0": 9, "y0": 19, "x1": 14, "y1": 24, "k": "tramp", "c": [60, 70, 160]}, {"x0": 17, "y0": 19, "x1": 22, "y1": 24, "k": "tramp", "c": [60, 70, 160]}, {"x0": 25, "y0": 19, "x1": 30, "y1": 24, "k": "tramp", "c": [60, 70, 160]}, {"x0": 37, "y0": 6, "x1": 53, "y1": 24, "k": "balls", "c": [230, 120, 90]}, {"x0": 50, "y0": 27, "x1": 55, "y1": 32, "k": "tramp", "c": [200, 60, 60]}], "zones": {"Батуты": [20, 20], "Сухой бассейн": [45, 15], "Аппаратная": [63, 8], "Горка": [14, 39], "Кафе": [60, 34], "Касса": [46, 46]}, "pois": {"j_enter": [35, 47.5], "j_exit": [35, 49], "j_booth": [62, 9.5], "j_proj": [64, 7.5], "j_launch": [52.5, 29.5]}, "spawns": [[12, 22, "walker"], [22, 14, "walker"], [28, 23, "runner"], [42, 12, "walker"], [48, 20, "walker"], [45, 30, "walker"], [30, 40, "walker"], [60, 24, "runner"]], "lights": [[20, 20, "cold"], [45, 15, "warm"], [63, 8, "cold"], [52, 29, "red"], [35, 45, "cold"], [60, 34, "warm"]], "prect": [-409.0, 49444.905, 299.0, 49854.0], "img": [2048, 1183], "outside": "cinema", "enter": "j_enter", "tramps": [[9, 11, 14, 16], [17, 11, 22, 16], [25, 11, 30, 16], [9, 19, 14, 24], [17, 19, 22, 24], [25, 19, 30, 24], [50, 27, 55, 32, 63, 10]], "beam": [63, 9]}};
+LEVELS.mall.outside = LEVELS.mall.outside || 'mall'; LEVELS.mall.enter = LEVELS.mall.enter || 'm_enter';
+let MOVER = null;                         // entity currently being moved (zombies may walk in the pit, the hero may not)
 let LEVEL = null;                         // null = city
 function lvW(L, gx, gy){ const X = gx + L.OX, Y = gy + L.OY; return [X*cb + Y*sb, -X*sb + Y*cb]; }   // grid -> world
 function lvG(L, x, y){ return [x*cb - y*sb - L.OX, x*sb + y*cb - L.OY]; }                         // world -> grid
-(function(){ for (const id in LEVELS){ const L = LEVELS[id]; L.id = id; L.bg = new Image(); L.bgReady = false; L.bg.onload = () => { L.bgReady = true; };
+(function(){ for (const id in LEVELS){ const L = LEVELS[id]; L.id = id; L.off = {}; if (Array.isArray(L.beam)){ L.beamAt = L.beam; L.beam = null; } L.floor = L.floor || []; L.bg = new Image(); L.bgReady = false; L.bg.onload = () => { L.bgReady = true; };
   for (const k in L.pois) POI[k] = lvW(L, L.pois[k][0], L.pois[k][1]); } })();
 function levelBlocked(x, y, r){
   const L = LEVEL, g = lvG(L, x, y), X = g[0], Y = g[1];
   if (X < 0.3 + r || Y < 0.3 + r || X > L.GW - 0.3 - r || Y > L.GH - 0.3 - r) return true;
-  for (const b of L.rects){ if (X > b.x0 - r && X < b.x1 + r && Y > b.y0 - r && Y < b.y1 + r) return true; }
+  for (const b of L.rects){ if (b.id && L.off[b.id]) continue; if (X > b.x0 - r && X < b.x1 + r && Y > b.y0 - r && Y < b.y1 + r) return true; }
+  if (L.pit && !(MOVER && MOVER.T)){ const p = L.pit; if (X > p[0] - r*0.6 && X < p[2] + r*0.6 && Y > p[1] - r*0.6 && Y < p[3] + r*0.6) return true; }
   return false;
 }
+function levelFloor(x, y){ const L = LEVEL; if (!L) return null; const g = lvG(L, x, y);
+  for (const a of L.floor){ if (g[0] > a.x0 && g[0] < a.x1 && g[1] > a.y0 && g[1] < a.y1) return a.k; } return null; }
+function inPit(x, y){ const L = LEVEL; if (!L || !L.pit) return false; const g = lvG(L, x, y), p = L.pit; return g[0] > p[0] && g[0] < p[2] && g[1] > p[1] && g[1] < p[3]; }
 function levelLos(x0, y0, x1, y1){
   const L = LEVEL, d = Math.hypot(x1 - x0, y1 - y0), n = Math.ceil(d/0.8);
   for (let i = 1; i < n; i++){ const t = i/n, g = lvG(L, x0 + (x1 - x0)*t, y0 + (y1 - y0)*t);
-    for (const b of L.rects){ if (b.h >= 1.25 && g[0] > b.x0 && g[0] < b.x1 && g[1] > b.y0 && g[1] < b.y1) return false; } }
+    for (const b of L.rects){ if (b.id && L.off[b.id]) continue; if (b.h >= 1.25 && g[0] > b.x0 && g[0] < b.x1 && g[1] > b.y0 && g[1] < b.y1) return false; } }
   return true;
 }
 function fadeScreen(cb){
@@ -1187,19 +1256,22 @@ function enterLevel(id, silent){
   const L = LEVELS[id]; if (!L || LEVEL === L) return;
   if (!L.bg.src) L.bg.src = 'lv/' + id + '.webp';
   const go = () => {
-    LEVEL = L; L.cityPos = [hero.x, hero.y];
+    LEVEL = L; L.cityPos = [hero.x, hero.y]; L.off = {}; L.flood = 0; L.flooding = false; L.beam = null;
     zombies.length = 0; footprints.length = 0; fires.length = 0; bullets.length = 0; spits.length = 0;
-    const p = POI.m_enter; hero.x = p[0]; hero.y = p[1]; hero.vx = hero.vy = 0;
-    for (const s of L.spawns){ const w = lvW(L, s[0], s[1]); const q = freeNear(w[0], w[1], 0.5); const z = makeZombie(s[2], q[0], q[1]); z.keep = true; z.alert = 0; z.still = Math.random() < 0.5; }
-    toast('ТЦ «Дзержинец»', 2.5);
+    const p = POI[L.enter]; hero.x = p[0]; hero.y = p[1]; hero.vx = hero.vy = 0; hero.air = null;
+    for (const s of L.spawns){ const w = lvW(L, s[0], s[1]); MOVER = {T: 1}; const q = freeNear(w[0], w[1], 0.5); MOVER = null; const z = makeZombie(s[2], q[0], q[1]); z.keep = true; z.alert = 0; z.still = Math.random() < 0.5;
+      if (L.pit && inPit(z.x, z.y)){ z.sleep = true; z.still = true; } }
+    toast(L.title || {mall: 'ТЦ «Дзержинец»', pool: 'Бассейн «Заря»', cinema: '«Жюль Верн»'}[id], 2.5);
   };
   silent ? go() : fadeScreen(go);
 }
+let LEVEL_LAST = null;
 function leaveLevel(silent){
   if (!LEVEL) return;
+  LEVEL_LAST = LEVEL;
   const go = () => {
     LEVEL = null; zombies.length = 0; bullets.length = 0; spits.length = 0; fires.length = 0;
-    const p = freeNear(POI.mall[0], POI.mall[1], 0.5); hero.x = p[0]; hero.y = p[1]; hero.vx = hero.vy = 0;
+    const out = POI[LEVEL_LAST.outside]; const p = freeNear(out[0], out[1], 0.5); hero.x = p[0]; hero.y = p[1]; hero.vx = hero.vy = 0; hero.air = null; hero.lift = 0;
   };
   silent ? go() : fadeScreen(go);
 }
@@ -1207,7 +1279,7 @@ function leaveLevel(silent){
 function levelTick(){
   if (LEVEL || S.dead || dlgLines || slidesOn) return;
   const id = Quests.levelWanted(); if (!id) return;
-  const p = POI.mall; if (Math.hypot(hero.x - p[0], hero.y - p[1]) < 7) enterLevel(id);
+  const p = POI[LEVELS[id].outside]; if (Math.hypot(hero.x - p[0], hero.y - p[1]) < 7) enterLevel(id);
 }
 function drawLevelBg(cx){
   const L = LEVEL; if (!L.bgReady) return;
@@ -1227,10 +1299,199 @@ function drawLevelMini(c, toM, R){
   const poly = (pts, fill) => { c.beginPath(); pts.forEach((p, i) => i ? c.lineTo(p[0], p[1]) : c.moveTo(p[0], p[1])); c.closePath(); c.fillStyle = fill; c.fill(); };
   c.fillStyle = '#1c1628'; c.fillRect(0, 0, R, R);
   poly([W(0, 0), W(L.GW, 0), W(L.GW, L.GH), W(0, L.GH)], '#4a4260');
-  for (const b of L.rects) poly([W(b.x0, b.y0), W(b.x1, b.y0), W(b.x1, b.y1), W(b.x0, b.y1)], b.k === 'wall' ? '#d8cdb4' : '#8d7f9e');
+  for (const a of L.floor) poly([W(a.x0, a.y0), W(a.x1, a.y0), W(a.x1, a.y1), W(a.x0, a.y1)], a.k === 'pit' ? (L.flood > 0.5 ? '#3a6a9a' : '#2c3448') : a.k === 'tramp' ? '#3b4aa0' : '#a05a48');
+  for (const b of L.rects) if (!(b.id && L.off[b.id])) poly([W(b.x0, b.y0), W(b.x1, b.y0), W(b.x1, b.y1), W(b.x0, b.y1)], b.k === 'wall' ? '#d8cdb4' : '#8d7f9e');
   c.font = '600 ' + Math.round(7*DPR) + 'px Georgia, serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
   for (const k in L.zones){ const q = W(L.zones[k][0], L.zones[k][1]); c.lineWidth = 3*DPR; c.strokeStyle = 'rgba(28,20,40,.9)'; c.strokeText(k, q[0], q[1]); c.fillStyle = '#ffe2a0'; c.fillText(k, q[0], q[1]); }
 }
+
+// ---------------------------------------------------------------- level mechanics
+// noise wakes sleepers (pool): shots are loud, sprinting is noisy, walking is quiet
+function makeNoise(x, y, R){
+  if (!LEVEL) return;
+  for (const z of zombies){ if (!z.sleep) continue; const d = Math.hypot(z.x - x, z.y - y);
+    if (d < R){ z.sleep = false; z.still = false; z.alert = 8; z.wakeT = 0.9; spawnPart(z.x, z.y, 0.6, '#c9d6e0', 4, 2, 0.5); if (!LEVEL.woke){ LEVEL.woke = true; toast('Они просыпаются!', 2); } } }
+}
+function wakeAll(){ for (const z of zombies){ if (z.sleep){ z.sleep = false; z.still = false; z.alert = 12; z.wakeT = 0.6 + Math.random()*1.4; } } if (LEVEL) LEVEL.woke = true; }
+let noiseT = 0;
+function levelUpdate(dt){
+  const L = LEVEL; if (!L) return;
+  // hero noise
+  noiseT -= dt;
+  if (L.pit && hero.moving && noiseT <= 0){ const sprint = (input.sprint || keys['shift']); makeNoise(hero.x, hero.y, sprint ? 16 : 3.2); noiseT = 0.35; if (sprint) L.noiseFx = 0.5; }
+  if (L.noiseFx > 0) L.noiseFx -= dt;
+  // flooding the basin
+  if (L.flooding && L.flood < 1){ L.flood = Math.min(1, L.flood + dt/3.5);
+    if (L.flood > 0.45) for (const z of zombies){ if (!z.dead && z.hp > 0 && inPit(z.x, z.y)){ z.hp -= 160*dt; z.slowW = 1; if (z.hp <= 0) killZombie(z); } } }
+  // projector beam
+  if (L.beam){ const b = L.beam; b.t += dt; b.ang = b.base + Math.sin(b.t*0.9)*0.95;
+    const o = lvW(L, L.beamAt[0], L.beamAt[1]);
+    for (let i = zombies.length - 1; i >= 0; i--){ const z = zombies[i]; if (z.dead) continue;
+      const g = lvG(L, z.x, z.y), dx = g[0] - L.beamAt[0], dy = g[1] - L.beamAt[1], d = Math.hypot(dx, dy); if (d > 60 || d < 1) continue;
+      const da = Math.abs(angWrap(Math.atan2(dy, dx) - b.ang));
+      if (da < 0.2 + 2/d){ z.hp -= 22*dt; z.flash = 0.05; const wx = z.x - o[0], wy = z.y - o[1], wl = Math.hypot(wx, wy) || 1; MOVER = z; moveEntity(z, wx/wl*7*dt, wy/wl*7*dt, z.T.r); MOVER = null; z.inBeam = 0.3; if (z.hp <= 0) killZombie(z, i); } }
+  }
+  // trampolines: launch the hero
+  if (L.tramps && !hero.air && !S.dead){
+    hero.trampCD = Math.max(0, (hero.trampCD || 0) - dt);
+    const g = lvG(L, hero.x, hero.y);
+    for (const t of L.tramps){ if (hero.trampCD > 0) break; if (g[0] > t[0] && g[0] < t[2] && g[1] > t[1] && g[1] < t[3]){
+      let tx, ty; if (t.length > 4){ const w = lvW(L, t[4], t[5]); tx = w[0]; ty = w[1]; }
+      else { const fx = hero.fx || 0.7, fy = hero.fy || 0.7, fl = Math.hypot(fx, fy) || 1; tx = hero.x + fx/fl*9; ty = hero.y + fy/fl*9; }
+      hero.air = {t: 0, dur: t.length > 4 ? 1.0 : 0.75, x0: hero.x, y0: hero.y, x1: tx, y1: ty, h: t.length > 4 ? 6 : 3.6}; sfx('swing'); haptic('medium'); break; } }
+  }
+}
+function heroAir(dt){
+  const a = hero.air; a.t += dt; const k = Math.min(1, a.t/a.dur);
+  hero.x = a.x0 + (a.x1 - a.x0)*k; hero.y = a.y0 + (a.y1 - a.y0)*k; hero.lift = -Math.sin(k*Math.PI)*a.h*ZS; hero.iframe = 0.1;
+  hero.moving = true; hero.walkPx = (hero.walkPx || 0) + 0;
+  if (k >= 1){ hero.air = null; hero.lift = 0; hero.trampCD = 0.45; if (blocked(hero.x, hero.y, 0.45)){ const p = freeNear(hero.x, hero.y, 0.45); hero.x = p[0]; hero.y = p[1]; } AUD.step(0.9); }
+}
+function drawLevelOverlay(cx){
+  const L = LEVEL; if (!L) return;
+  if (L.pit && L.flood > 0){   // water rising in the basin
+    const p = L.pit, dep = 1.6*(1 - L.flood), q = (gx, gy) => { const w = lvW(L, gx, gy); return P(w[0], w[1], -dep); };
+    cx.save(); cx.globalAlpha = 0.25 + 0.5*Math.min(1, L.flood*1.4); cx.fillStyle = '#3d86b8';
+    cx.beginPath(); [q(p[0], p[1]), q(p[2], p[1]), q(p[2], p[3]), q(p[0], p[3])].forEach((v, i) => i ? cx.lineTo(v[0], v[1]) : cx.moveTo(v[0], v[1])); cx.closePath(); cx.fill();
+    cx.globalAlpha = 0.25; cx.strokeStyle = '#cfe8ff'; cx.lineWidth = 1;
+    for (let i = 0; i < 14; i++){ const gx = p[0] + ((i*7.3 + time*2.2)%(p[2] - p[0])), gy = p[1] + (i*5.1%(p[3] - p[1])); const v = q(gx, gy); cx.beginPath(); cx.ellipse(v[0], v[1], 6, 2, 0, 0, TAU); cx.stroke(); }
+    cx.restore();
+  }
+  if (L.noiseFx > 0){ const s = P(hero.x, hero.y, 0), r = (0.5 - L.noiseFx)*90 + 10; cx.save(); cx.globalAlpha = L.noiseFx*1.4; cx.strokeStyle = '#ffd0a0'; cx.lineWidth = 1.2; cx.beginPath(); cx.ellipse(s[0], s[1], r, r*0.5, 0, 0, TAU); cx.stroke(); cx.restore(); }
+}
+function drawLevelBeam(cx){
+  const L = LEVEL; if (!L) return;
+  if (L.beam){   // projector beam cone
+    const b = L.beam, o = lvW(L, L.beamAt[0], L.beamAt[1]), s0 = P(o[0], o[1], 2.2);
+    const end = a => { const w = lvW(L, L.beamAt[0] + Math.cos(a)*55, L.beamAt[1] + Math.sin(a)*55); return P(w[0], w[1], 0); };
+    const e1 = end(b.ang - 0.13), e2 = end(b.ang + 0.13), em = end(b.ang);
+    cx.save(); cx.globalCompositeOperation = 'lighter';
+    const g = cx.createLinearGradient(s0[0], s0[1], em[0], em[1]); g.addColorStop(0, 'rgba(255,250,220,.55)'); g.addColorStop(1, 'rgba(255,250,220,0)');
+    cx.fillStyle = g; cx.beginPath(); cx.moveTo(s0[0], s0[1]); cx.lineTo(e1[0], e1[1]); cx.lineTo(e2[0], e2[1]); cx.closePath(); cx.fill(); cx.restore();
+  }
+}
+function beamLights(){ const L = LEVEL; if (!L || !L.beam) return []; const out = [];
+  for (let d = 8; d < 52; d += 11){ const w = lvW(L, L.beamAt[0] + Math.cos(L.beam.ang)*d, L.beamAt[1] + Math.sin(L.beam.ang)*d), s = P(w[0], w[1], 0); out.push({x: s[0], y: s[1], r: 40 + d*0.8, i: 1}); }
+  return out; }
+
+// ---------------------------------------------------------------- «Нива»: drivable car with slippery-road physics
+// Arcade-sim model: velocity and heading are separate, sideways grip on snow is low -> the car slides and drifts.
+// Joystick = desired direction (car steers towards it, gas = stick tilt; pulling backwards = reverse),
+// «Бег» = handbrake (kills rear grip -> handbrake turns), «Действие» = get in / out, «Огонь» = horn.
+const NIVA = {"frames": [[63, 9, 173, 227], [308, 13, 284, 223], [602, 47, 295, 189], [908, 45, 283, 191], [1269, 56, 162, 180], [1507, 42, 286, 194], [1800, 42, 300, 194], [2103, 0, 294, 236]], "fh": 236};                       // {frames:[[x,y,w,h] x8], fh}
+const nivaImg = new Image(); nivaImg.src = 'sp/niva.webp';
+const CARS = [];
+let driving = null, camZoomCur = 1;
+const CARP = {acc: 13, brake: 24, rev: 6.5, vmax: 21, drag: 0.22, grip: 2.4, gripHB: 0.45, steer: 2.3, len: 1.45, r: 1.05};
+const CAR_H = 44;                            // on-screen height of the side view, P units
+function makeCar(x, y, h){ const c = {x, y, h: h || 0, vx: 0, vy: 0, w: 0, hp: 100, _car: true, hgt: 1.6, r: 1.6, horn: 0, smoke: 0}; CARS.push(c); return c; }
+function carPoints(c, x, y, h){ const fx = Math.cos(h), fy = Math.sin(h); return [[x + fx*CARP.len, y + fy*CARP.len], [x, y], [x - fx*CARP.len, y - fy*CARP.len]]; }
+// cars as obstacles for everything else
+function carBlocks(x, y, r, self){
+  for (const c of CARS){ if (c === self || c.dead) continue;
+    if (Math.abs(x - c.x) > 4 || Math.abs(y - c.y) > 4) continue;
+    for (const p of carPoints(c, c.x, c.y, c.h)) if (Math.hypot(x - p[0], y - p[1]) < r + CARP.r) return true; }
+  return false;
+}
+function carBlockedAt(c, x, y, h){ for (const p of carPoints(c, x, y, h)) if (blocked(p[0], p[1], CARP.r, c)) return true; return false; }
+function nearCar(maxD){ let best = null, bd = maxD; for (const c of CARS){ if (c.dead || c.locked) continue; const d = Math.hypot(hero.x - c.x, hero.y - c.y); if (d < bd){ bd = d; best = c; } } return best; }
+function enterCar(c){
+  driving = c; hero.inCar = true; hero.moving = false; input.sprint = false; $('bspr').classList.remove('on');
+  document.body.classList.add('driving'); toast('Газ — джойстик · Ручник — «Бег» · Выйти — «Действие»', 3.5); sfx('click');
+}
+function exitCar(force){
+  const c = driving; if (!c) return false;
+  const sp = Math.hypot(c.vx, c.vy); if (sp > 3.5 && !force){ toast('Сначала остановитесь', 1.2); return true; }
+  driving = null; hero.inCar = false; document.body.classList.remove('driving');
+  const sx = -Math.sin(c.h), sy = Math.cos(c.h); const p = freeNear(c.x + sx*2.4, c.y + sy*2.4, 0.45); hero.x = p[0]; hero.y = p[1];
+  return true;
+}
+function angWrap(a){ while (a > Math.PI) a -= TAU; while (a < -Math.PI) a += TAU; return a; }
+function updateCars(dt){
+  for (const c of CARS){
+    if (c.dead) continue;
+    const fx = Math.cos(c.h), fy = Math.sin(c.h), rx = -fy, ry = fx;
+    let vf = c.vx*fx + c.vy*fy, vr = c.vx*rx + c.vy*ry;
+    let thr = 0, steer = 0, hb = false;
+    if (c === driving && !S.dead && !uiBlock()){
+      let ix = input.x, iy = input.y;
+      if (keys['arrowleft'] || keys['a'] || keys['ф']) ix -= 1; if (keys['arrowright'] || keys['d'] || keys['в']) ix += 1;
+      if (keys['arrowup'] || keys['w'] || keys['ц']) iy -= 1; if (keys['arrowdown'] || keys['s'] || keys['ы']) iy += 1;
+      const mag = Math.min(1, Math.hypot(ix, iy));
+      hb = !!(input.sprint || keys['shift']);
+      if (mag > 0.12){
+        const g = unrot(ix, iy), want = Math.atan2(g[1], g[0]); let diff = angWrap(want - c.h);
+        if (Math.abs(diff) < 2.1 || vf > 4){ thr = mag; steer = Math.max(-1, Math.min(1, diff*1.7)); }
+        else { thr = -0.7*mag; steer = Math.max(-1, Math.min(1, -angWrap(diff - Math.PI)*1.7)); }
+      }
+      if (input.fire || keys[' ']){ if (c.horn <= 0){ c.horn = 0.9; sfx('click'); if (typeof makeNoise === 'function') makeNoise(c.x, c.y, 40); alertNearby(c.x, c.y, 35); } }
+    }
+    c.horn = Math.max(0, c.horn - dt);
+    // longitudinal
+    if (thr > 0){ if (vf < -0.5) vf += CARP.brake*thr*dt; else vf += CARP.acc*thr*(1 - Math.max(0, vf)/CARP.vmax)*dt; }
+    else if (thr < 0){ if (vf > 0.5) vf -= CARP.brake*(-thr)*dt; else vf = Math.max(-CARP.rev, vf + CARP.acc*0.6*thr*dt); }
+    vf -= vf*CARP.drag*dt + Math.sign(vf)*Math.min(Math.abs(vf), 0.6*dt);
+    if (hb) vf -= vf*1.1*dt;
+    // lateral grip: snow lets the tail slide; handbrake almost frees it
+    const grip = hb ? CARP.gripHB : CARP.grip;
+    vr -= vr*Math.min(1, grip*dt);
+    // steering: yaw rate builds up with lag (ice), scales with speed, reverses in reverse
+    const sgn = vf >= 0 ? 1 : -1, spd = Math.abs(vf);
+    const wTarget = steer*CARP.steer*Math.min(1, spd/5)*sgn*(hb ? 1.5 : 1);
+    c.w += (wTarget - c.w)*Math.min(1, dt*(hb ? 6 : 3.2));
+    c.h = angWrap(c.h + c.w*dt);
+    // back to world velocity (heading changed -> momentum stays, so the car slides)
+    c.vx = fx*vf + rx*vr; c.vy = fy*vf + ry*vr;
+    // integrate with collision
+    const nx = c.x + c.vx*dt, ny = c.y + c.vy*dt;
+    if (!carBlockedAt(c, nx, ny, c.h)){ c.x = nx; c.y = ny; }
+    else {
+      const imp = Math.hypot(c.vx, c.vy);
+      if (!carBlockedAt(c, nx, c.y, c.h)){ c.x = nx; c.vy *= -0.25; }
+      else if (!carBlockedAt(c, c.x, ny, c.h)){ c.y = ny; c.vx *= -0.25; }
+      else { c.vx *= -0.3; c.vy *= -0.3; }
+      c.w *= 0.4;
+      if (imp > 7){ c.hp -= (imp - 6)*1.6; c.shake = 0.25; sfx('hit'); haptic('heavy'); spawnPart(c.x, c.y, 1.2, '#c9c3b5', 8, 4, 0.5); }
+    }
+    if (carBlockedAt(c, c.x, c.y, c.h)){ const p = freeNear(c.x, c.y, 2.2); c.x = p[0]; c.y = p[1]; }
+    // ramming zombies
+    const sp = Math.hypot(c.vx, c.vy);
+    for (let i = zombies.length - 1; i >= 0; i--){
+      const z = zombies[i]; if (z.dead) continue;
+      let hit = false; for (const p of carPoints(c, c.x, c.y, c.h)) if (Math.hypot(z.x - p[0], z.y - p[1]) < CARP.r + z.T.r + 0.2) hit = true;
+      if (!hit) continue;
+      const a = Math.atan2(z.y - c.y, z.x - c.x);
+      if (sp > 5){ damageZombie(z, sp*(z.type === 'boss' ? 2 : 7), Math.atan2(c.vy, c.vx)); c.hp -= z.type === 'brute' ? 6 : 1.2; c.vx *= 0.9; c.vy *= 0.9; haptic('medium'); }
+      else { z.x += Math.cos(a)*0.15; z.y += Math.sin(a)*0.15; }
+    }
+    c.shake = Math.max(0, (c.shake || 0) - dt);
+    if (c.hp <= 30) c.smoke += dt; if (c.hp <= 30 && c.smoke > 0.12){ c.smoke = 0; spawnPart(c.x, c.y, 1.6, '#55505a', 1, 1.2, 1.2); }
+    if (c.hp <= 0 && !c.dead){ c.hp = 0; c.wrecked = true; if (c === driving){ exitCar(true); toast('«Нива» разбита! Дальше пешком', 3); } c.locked = true; }
+    c.depth = depthOf(c.x, c.y);
+    c.speed = sp;
+  }
+  if (driving){ hero.x = driving.x; hero.y = driving.y; hero.fx = Math.cos(driving.h); hero.fy = Math.sin(driving.h); hero.depth = driving.depth; }
+  // engine sound pitch via existing samples would be nice; keep simple: none
+  const want = driving ? 1.32 : 1; camZoomCur += (want - camZoomCur)*Math.min(1, dt*1.5);
+}
+function drawCar(cx, c){
+  if (!nivaImg.complete || !nivaImg.naturalWidth) return;
+  const d = P(Math.cos(c.h), Math.sin(c.h), 0), o = P(0, 0, 0), ang = Math.atan2((d[1] - o[1])*2, d[0] - o[0]);
+  const idx = ((Math.round((ang - Math.PI/2)/(Math.PI/4))%8) + 8)%8, f = NIVA.frames[idx];
+  const k = CAR_H/NIVA.frames[2][3], s = P(c.x, c.y, 0), sh = c.shake ? (Math.random() - 0.5)*1.5 : 0;
+  cx.save(); cx.translate(s[0] + sh, s[1]);
+  cx.fillStyle = 'rgba(25,18,40,.38)'; cx.beginPath(); cx.ellipse(0, -1, f[2]*k*0.46, f[2]*k*0.16 + 3, 0, 0, TAU); cx.fill();
+  if (c.wrecked) cx.filter = 'brightness(0.55) saturate(0.4)';
+  cx.drawImage(nivaImg, f[0], f[1], f[2], f[3], -f[2]*k/2, -f[3]*k + f[3]*k*0.06, f[2]*k, f[3]*k);
+  cx.filter = 'none';
+  if (c === driving && c.speed > 0.5){   // headlights glow
+    cx.globalCompositeOperation = 'lighter'; const hx = (d[0] - o[0])*14, hy = (d[1] - o[1])*14;
+    const g = cx.createRadialGradient(hx, hy - 6, 0, hx, hy - 6, 46); g.addColorStop(0, 'rgba(255,240,190,.28)'); g.addColorStop(1, 'rgba(255,240,190,0)');
+    cx.fillStyle = g; cx.beginPath(); cx.arc(hx, hy - 6, 46, 0, TAU); cx.fill(); cx.globalCompositeOperation = 'source-over';
+  }
+  cx.restore();
+}
+function carLights(){ const L = []; if (driving){ const c = driving, s = P(c.x + Math.cos(c.h)*5, c.y + Math.sin(c.h)*5, 0); L.push({x: s[0], y: s[1], r: 95, i: 1}); } return L; }
 
 // ---------------------------------------------------------------- slideshow: intro + story cutscenes
 const SCENES = {
@@ -1321,8 +1582,12 @@ function resize(){
   DPR = Math.min(window.devicePixelRatio || 1, 2.2);
   W = innerWidth; H = innerHeight;
   cv.width = Math.round(W*DPR); cv.height = Math.round(H*DPR);
-  VWu = (W < H ? 360 : Math.max(470, 360*W/H*0.62))/ZOOM;
-  K = cv.width/VWu; VHu = cv.height/K;
+  applyZoom();
+}
+let zoomApplied = 0;
+function applyZoom(){
+  const z = ZOOM/(typeof camZoomCur !== 'undefined' ? camZoomCur : 1); zoomApplied = z;
+  VWu = (W < H ? 360 : Math.max(470, 360*W/H*0.62))/z; K = cv.width/VWu; VHu = cv.height/K;
 }
 addEventListener('resize', resize); resize();
 
@@ -1409,6 +1674,7 @@ const corpseDraw = (c, cp) => {
 // ---------------------------------------------------------------- frame
 let camX = 0, camY = 0, camInit = false;
 function render(){
+  if (Math.abs(ZOOM/camZoomCur - zoomApplied) > 0.002) applyZoom();
   cx.setTransform(1, 0, 0, 1, 0, 0); cx.fillStyle = LEVEL ? '#0e0a16' : '#c9b4c6'; cx.fillRect(0, 0, cv.width, cv.height);
   const hs = P(hero.x, hero.y, 0);
   let tx = hs[0] - VWu/2 + (hero.fx ? -hero.fx*0 : 0), ty = hs[1] - VHu*0.52;
@@ -1418,7 +1684,7 @@ function render(){
   cx.setTransform(K, 0, 0, K, -cX*K, -cY*K);
   cx.imageSmoothingEnabled = true; cx.imageSmoothingQuality = 'high';
   const vx0 = cX, vy0 = cY, vx1 = cX + VWu, vy1 = cY + VHu;
-  if (LEVEL) drawLevelBg(cx); else drawTiles(cx, vx0 - 300, vy0 - 300, vx1 + 300, vy1 + 300, true);   // loads neighbours too
+  if (LEVEL){ drawLevelBg(cx); drawLevelOverlay(cx); } else drawTiles(cx, vx0 - 300, vy0 - 300, vx1 + 300, vy1 + 300, true);   // loads neighbours too
   // footprints in the snow
   cx.save();
   for (const f of footprints){
@@ -1440,7 +1706,9 @@ function render(){
   const inView = o => { const s = P(o.x, o.y, 0); return s[0] > vx0 - 60 && s[0] < vx1 + 60 && s[1] > vy0 - 40 && s[1] < vy1 + 100; };
   for (const z of zombies) if (inView(z)) items.push(z);
   for (const k in npcs) if (!npcs[k].hidden && inView(npcs[k])) items.push(npcs[k]);
-  items.push(hero);
+  if (!hero.inCar) items.push(hero);
+  if (hero.air){ const s = P(hero.x, hero.y, 0); cx.fillStyle = 'rgba(20,14,30,.35)'; cx.beginPath(); cx.ellipse(s[0], s[1], 8, 3.5, 0, 0, TAU); cx.fill(); }
+  for (const c of CARS) if (inView(c)) items.push(c);
   for (const p of pickups) if (inView(p)){ p.dyn = true; p.draw = null; p.hgt = 1; p._pk = true; items.push(p); }
   for (const it of Quests.itemsToDraw()) if (inView(it)){ it.dyn = true; it._qi = true; it.hgt = 1; items.push(it); }
   for (const cp of corpses) if (inView(cp)){ cp.dyn = true; cp._cp = true; cp.hgt = 0.5; items.push(cp); }
@@ -1460,7 +1728,7 @@ function render(){
   }
   const drawItem = o => {
     o.depth = depthOf(o.x, o.y);
-    if (o._pk) drawPickup(cx, o, time); else if (o._qi) drawQuestItem(cx, o, time); else if (o._cp) corpseDraw(cx, o); else drawSprite(cx, o, time);
+    if (o._car) drawCar(cx, o); else if (o._pk) drawPickup(cx, o, time); else if (o._qi) drawQuestItem(cx, o, time); else if (o._cp) corpseDraw(cx, o); else drawSprite(cx, o, time);
   };
   // ground effects first (fire pools, defend zone ring)
   for (const f of fires){ const s = P(f.x, f.y, 0); cx.save(); cx.translate(s[0], s[1]); const fl = 0.6 + Math.sin(time*18 + f.x)*0.2; cx.fillStyle = 'rgba(255,120,40,' + 0.35*fl + ')'; cx.beginPath(); cx.ellipse(0, 0, 28, 13, 0, 0, TAU); cx.fill(); cx.fillStyle = 'rgba(255,200,80,' + 0.5*fl + ')'; cx.beginPath(); cx.ellipse(0, -3, 16, 7, 0, 0, TAU); cx.fill(); cx.restore(); }
@@ -1469,6 +1737,9 @@ function render(){
     slots[i].sort((a, b) => depthOf(a.x, a.y) - depthOf(b.x, b.y)).forEach(drawItem);
     if (i < vbl.length) redrawSil(cx, vbl[i]);
   }
+  if (LEVEL) drawLevelBeam(cx);
+  { const hi = Quests.holdInfo(); if (hi) for (const v of hi){ if (v.p >= 1) continue; const s = P(v.x, v.y, 3.2); cx.save(); cx.lineWidth = 2.2; cx.strokeStyle = 'rgba(30,20,40,.7)'; cx.beginPath(); cx.arc(s[0], s[1], 6, 0, TAU); cx.stroke();
+      cx.strokeStyle = '#ffd36a'; cx.beginPath(); cx.arc(s[0], s[1], 6, -Math.PI/2, -Math.PI/2 + TAU*v.p); cx.stroke(); cx.restore(); } }
   // bullets & particles
   for (const b of bullets){
     if (b.mol){ const s = P(b.x, b.y, b.z); cx.fillStyle = '#ffb04a'; cx.fillRect(s[0] - 3, s[1] - 3, 6, 6); continue; }
@@ -1574,7 +1845,7 @@ function nextLine(){ if (!dlgLines) return; dlgIdx++; if (dlgIdx >= dlgLines.len
 elDlg.addEventListener('pointerdown', e => { e.stopPropagation(); nextLine(); });
 window.openDialog = openDialog;
 function uiBlock(){ return !!dlgLines || !running; }
-function interact(){ if (dlgLines){ nextLine(); return; } if (Quests.interact()) return; }
+function interact(){ if (dlgLines){ nextLine(); return; } if (driving){ exitCar(); return; } if (Quests.interact()) return; const c = nearCar(3.4); if (c && !c.wrecked) enterCar(c); }
 function onDeath(){ $('dead').style.display = 'flex'; input.x = input.y = 0; input.fire = false; }
 function respawn(){
   if (LEVEL) leaveLevel(true);
@@ -1588,7 +1859,7 @@ $('rs').addEventListener('click', respawn);
 const input2 = null;
 addEventListener('keydown', e => { if (slidesOn){ if (e.key === 'Escape') document.querySelector('#sl .sls').dispatchEvent(new Event('pointerdown')); else document.getElementById('sl').dispatchEvent(new Event('pointerdown')); return; }
   const k = e.key.toLowerCase();
-  if ([' ', 'enter', 'e', 'у'].includes(k)){ e.preventDefault(); if (!e.repeat) interact(); return; }
+  if ([' ', 'enter', 'e', 'у'].includes(k)){ e.preventDefault(); keys[k] = true; if (!e.repeat) interact(); return; }
   if (k === 'r' || k === 'к') startReload(); if (k === 'q' || k === 'й') switchWeapon(1); if (k === 'h' || k === 'р') useMed(); if (k === 'm' || k === 'ь'){ bigMap = !bigMap; mm.classList.toggle('big', bigMap); }
   if (k === 'tab'){ e.preventDefault(); Quests.cycle(); }
   keys[k] = true;
@@ -1618,7 +1889,7 @@ function joyEnd(e){ if (e.pointerType === 'mouse'){ input.fire = false; input.ai
 cv.addEventListener('pointerup', joyEnd); cv.addEventListener('pointercancel', joyEnd);
 function hold(el, on, off){ el.addEventListener('pointerdown', e => { e.stopPropagation(); e.preventDefault(); on(); try { el.setPointerCapture(e.pointerId); } catch (_) {} }); const o = e => { off && off(); }; el.addEventListener('pointerup', o); el.addEventListener('pointercancel', o); el.addEventListener('lostpointercapture', o); }
 hold($('bfire'), () => { if (!dlgLines && running) input.fire = true; }, () => { input.fire = false; });
-$('bact').addEventListener('pointerdown', e => { e.stopPropagation(); interact(); });
+hold($('bact'), () => { input.act = true; interact(); }, () => { input.act = false; });
 $('brel').addEventListener('pointerdown', e => { e.stopPropagation(); startReload(); });
 $('bwp').addEventListener('pointerdown', e => { e.stopPropagation(); switchWeapon(1); });
 $('bmed').addEventListener('pointerdown', e => { e.stopPropagation(); useMed(); });
@@ -1645,12 +1916,12 @@ function frame(ts){
   const dt = Math.min(0.05, (ts - last)/1000 || 0.016); last = ts; dtLast = dt; time += dt;
   if (running){
     if (!dlgLines && !slidesOn){
-      levelTick(); updateHero(dt); updateZombies(dt); updateNpcs(dt); updateBullets(dt); updatePickups(dt); spawnTick(dt); Quests.update(dt);
+      levelTick(); updateHero(dt); levelUpdate(dt); updateCars(dt); updateZombies(dt); updateNpcs(dt); updateBullets(dt); updatePickups(dt); spawnTick(dt); Quests.update(dt);
       zombieCap = 12 + Math.min(10, Math.floor(Quests.progressCount()/2));
       S.stamina = Math.max(0, Math.min(100, S.stamina)); elSt.style.width = S.stamina + '%';
       for (const cp of corpses) cp.t += dt; for (const f of footprints) f.t += dt; while (footprints.length && footprints[0].t > 40) footprints.shift();
     } else { updateNpcs(dt*0); }
-    const w = curW(); const can = Quests.canInteract(); elAct.classList.toggle('ready', !!can);
+    const w = curW(); const nc = nearCar(3.4), can = Quests.canInteract() || driving || (nc && !nc.wrecked); elAct.classList.toggle('ready', !!can);
     $('bact').classList.toggle('ready', !!can);
     if (hero.reloadT > 0) $('brel').textContent = '…'; else $('brel').textContent = '↻';
     zombies.forEach(z => z.depth = depthOf(z.x, z.y));
@@ -1664,7 +1935,7 @@ $('go').addEventListener('click', () => {
   try { const w = window.Telegram.WebApp; w.ready(); w.expand(); if (w.disableVerticalSwipes) w.disableVerticalSwipes(); } catch (_) {}
 });
 requestAnimationFrame(frame);
-window.__dbg = {AUD, enterLevel, leaveLevel, LEVELS, get LEVEL(){ return LEVEL; }, colMask, nearestFire, CM, hero, S, zombies, Quests, tiles, P, POI, blocked, occludersOf, input, freeNear, npcs, bullets, pickups, giveWeapon, makeZombie, nextLine, interact, killZombie, hud, get dlg(){ return dlgLines; }, get zlist(){ return zombies; }, step(dt){ updateHero(dt); updateZombies(dt); updateNpcs(dt); updateBullets(dt); updatePickups(dt); Quests.update(dt); }};
+window.__dbg = {AUD, makeNoise, wakeAll, inPit, CARS, makeCar, enterCar, exitCar, get driving(){ return driving; }, enterLevel, leaveLevel, LEVELS, get LEVEL(){ return LEVEL; }, colMask, nearestFire, CM, hero, S, zombies, Quests, tiles, P, POI, blocked, occludersOf, input, freeNear, npcs, bullets, pickups, giveWeapon, makeZombie, nextLine, interact, killZombie, hud, get dlg(){ return dlgLines; }, get zlist(){ return zombies; }, step(dt){ updateHero(dt); updateCars(dt); updateZombies(dt); updateNpcs(dt); updateBullets(dt); updatePickups(dt); Quests.update(dt); }};
 
 // ---------------------------------------------------------------- living fire + flickering light
 // FIRES: painted bonfires/barrels found on the map tiles (P-space x,y at flame base, s = flame size in P units)
@@ -1687,6 +1958,8 @@ function fireLights(vx0, vy0, vx1, vy1){
   for (const f of fires){ const s = P(f.x, f.y, 0); L.push({x: s[0], y: s[1] - 6, r: 110, i: flick(f.x, time)*Math.min(1, (f.life - f.t)/1.5), dyn: true}); }
   if (typeof flameLit !== 'undefined' && flameLit){ const s = P(POI.flame[0], POI.flame[1], 0); L.push({x: s[0], y: s[1] - 10, r: 160, i: flick(3, time)}); }
   if (LEVEL) L.push(...levelLights());
+  if (typeof carLights === 'function') L.push(...carLights());
+  if (LEVEL) L.push(...beamLights());
   if (hero.muzzle > 0){ const s = P(hero.x, hero.y, 1.2); L.push({x: s[0], y: s[1], r: 90, i: 1.2, muzzle: true}); }
   return L;
 }

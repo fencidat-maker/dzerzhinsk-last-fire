@@ -10,11 +10,12 @@ import math
 m=meta[0]; SMINX=m[2]-m[0]*1830+100; SMINY=m[3]-m[1]*1215+300
 ovs=json.dumps([SMINX,SMINY,2988,0.2])
 js=''
-for f in ('rt_core.js','col.js','audio.js','chars.js','game_rt.js','puppet.js','quests.js','level.js','slides.js','main.js','fx.js'):
+for f in ('rt_core.js','col.js','audio.js','chars.js','game_rt.js','puppet.js','quests.js','level.js','car.js','slides.js','main.js','fx.js'):
     s=open(f).read()
     if f=='rt_core.js': s=s.replace('__WORLD__',wj)
     if f=='main.js': s=s.replace('__TILES__',tiles).replace('__OVS__',ovs).replace('__MMT__',open('mm/tiles.json').read())
-    if f=='level.js': s=s.replace('__MALL__',open('../mall/mall.json').read())
+    if f=='car.js': s=s.replace('__NIVA__',open('../car/niva.json').read())
+    if f=='level.js': s=s.replace('__MALL__',open('../mall/mall.json').read()).replace('__POOL__',open('../lv/pool.json').read()).replace('__JV__',open('../lv/jv.json').read())
     if f=='fx.js': s=s.replace('__FIRES__',open('fires.json').read())
     if f=='puppet.js': s=s.replace('__ATLAS__',open('sp/atlas.json').read())
     js+=s+'\n'

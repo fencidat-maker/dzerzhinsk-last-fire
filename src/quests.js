@@ -71,12 +71,23 @@ const CHAINS = [
     {t: 'talk', who: 'babka', obj: 'Поговорите с бабой Нюрой у «Дзержинца»', lines: [
       D1('Баба Нюра', 'Живой вышел, гляди-ка! Варежка-то красненькая… Видала я её. Девчушка с фонариком и очкастый. Шли к бассейну «Заря», он там внутри всё запирал.'),
       D1('Баба Нюра', 'Мертвяки воды боятся, что ли? Не знаю. Иди, иди, сынок.')], reward: {coins: 30}},
-    {t: 'goto', poi: 'pool', r: 8, obj: 'Доберитесь до бассейна «Заря»', spawn: ['pool', 6, ['walker', 'runner'], 28]},
-    {t: 'defend', poi: 'pool', r: 24, secs: 45, obj: 'Держитесь у бассейна, пока не стихнет', rate: 2.0, types: ['walker', 'runner', 'chemist']},
+    {t: 'goto', poi: 'pool', r: 8, obj: 'Доберитесь до бассейна «Заря»', enter: 'pool', spawn: ['pool', 6, ['walker', 'runner'], 28]},
+    {t: 'collect', level: 'pool', obj: 'Тихо! В чаше спят мертвецы. Пройдите по бортику в тренерскую — не бегите и не стреляйте', items: [{poi: 'p_journal', name: 'Журнал Гордеева'}]},
+    {t: 'intro', level: 'pool', wake: true, obj: 'Журнал', lines: [
+      D1('Журнал · Гордеев', '«…Девочку зовут Ася. Укус затянулся за одну ночь. Ведём её к отцу Николаю, в часовню у ДКХ. Спящих в чаше не будить — их там десятки».'),
+      D1(L, 'Ася жива…'),
+      D1('', 'Сквозняк с грохотом захлопывает дверь тренерской. В чаше начинают шевелиться.'),
+      D1(L, 'Вентили! Если залить чашу, им оттуда не выбраться.')]},
+    {t: 'hold', level: 'pool', obj: 'Откройте три вентиля — удерживайте «Действие»', items: ['p_v1', 'p_v2', 'p_v3'], secs: 2.2, onDone: 'flood'},
+    {t: 'goto', level: 'pool', poi: 'p_exit', r: 3, obj: 'Чаша затоплена. Уходите из «Зари»', exit: true},
     {t: 'talk', who: 'priest', obj: 'Найдите отца Николая у часовни возле ДКХ', lines: [
       D1('Отец Николай', 'Девочку я благословил вчера. Она несла фонарь и всё повторяла: «Лёва приедет». Они ушли в Дворец культуры.'),
       D1('Отец Николай', 'Возьми свечи. И коктейли — прости меня, Господи, — у меня в сторожке их целый ящик.')], give: {mol: 4}, reward: {med: 1}},
-    {t: 'defend', poi: 'cinema', r: 20, secs: 35, obj: 'Включите проектор в «Жюль Верне»: луч держит их', rate: 2.2, types: ['walker', 'runner', 'frost']},
+    {t: 'goto', poi: 'cinema', r: 8, obj: 'Бывший «Ударник», теперь «Жюль Верн». Проберитесь внутрь', enter: 'cinema'},
+    {t: 'goto', level: 'cinema', poi: 'j_booth', r: 3.2, obj: 'Аппаратная заколочена. Допрыгните туда с красного батута', lines: [
+      D1(L, 'Старый кинопроектор. Если он ещё жив — луч их задержит.')]},
+    {t: 'beam', level: 'cinema', poi: 'j_proj', secs: 40, rate: 1.5, types: ['walker', 'runner', 'walker', 'frost'], obj: 'Включите проектор («Действие») и держитесь, пока крутится луч'},
+    {t: 'goto', level: 'cinema', poi: 'j_exit', r: 3, obj: 'Проектор догорел. Уходите из «Жюль Верна»', exit: true},
     // ---- Midpoint
     {t: 'goto', poi: 'dkh', r: 9, obj: 'Войдите в ДКХ', scene: 'dkh', spawn: ['dkh', 7, ['walker', 'frost', 'chemist'], 30], ch: CH3, lines: [
       D1(L, 'Под ротондой… Это её фонарь. Ещё тёплый.'),
@@ -94,7 +105,9 @@ const CHAINS = [
       D1('Серёгин', 'Тогда сам и выкручивайся.'),
       D1('Ася', 'Он стреляет в воздух! Они услышат!')], hide: ['major'], reward: {}},
     {t: 'kill', n: 10, obj: 'Отбейтесь — выстрелы подняли весь квартал', zone: ['kotel', 70], spawn: ['kotel', 12, ['walker', 'runner', 'brute'], 30]},
-    {t: 'escort', who: 'asya', poi: 'kotel', to: 'flame', obj: 'Отведите Асю к Вечному огню', spawn: ['flame', 7, ['walker', 'runner', 'frost'], 40]},
+    {t: 'drive', who: 'asya', poi: 'kotel', car: [-40, -80], to: 'flame', r: 16, obj: 'За котельной «Нива» Леонтьича. Посадите Асю и гоните к Вечному огню', spawn: ['flame', 9, ['walker', 'runner', 'frost', 'walker'], 60], lines: [
+      D1('Ася', 'Ты водишь, как папа. Он тоже по льду боком ездил.'),
+      D1(L, 'Держись. Приехали — огонь горит.')]},
     {t: 'defend', poi: 'flame', r: 24, secs: 60, obj: 'Ночная атака! Удержите огонь', rate: 1.7, types: ['walker', 'runner', 'frost', 'brute', 'chemist'], onStart: 'flameOn'},
     {t: 'talk', who: 'dvornik', obj: 'Леонтьич ранен — подойдите к нему', after: 'leontich', lines: [
       D1('Леонтьич', 'Задели, черти… Ничего, Лёвка. Ты пришёл за ней. Не убежал.'),
@@ -129,7 +142,7 @@ const CHAINS = [
     {t: 'collect', obj: 'Соберите 3 бутылки у брошенных машин', items: [{poi: 'mall', name: 'Бутылка', dx: 14, dy: 10}, {poi: 'mall', name: 'Бутылка', dx: -15, dy: -6}, {poi: 'arch', name: 'Бутылка', dx: 6, dy: 6}], spawn: ['mall', 5, ['walker', 'runner'], 30]},
     {t: 'talk', who: 'babka', obj: 'Вернитесь к бабе Нюре', lines: [D1('Баба Нюра', 'Вот, держи. Не пей только — это для них.')], give: {weapon: 'obrez', ammo: 10, mol: 4}, reward: {coins: 60}}
   ]},
-  {id: 'side2', title: 'Тир в парке', unlock: 20, steps: [
+  {id: 'side2', title: 'Тир в парке', unlock: 26, steps: [
     {t: 'goto', poi: 'tir', r: 5, obj: 'Обыщите тир Центрального парка', lines: [D1('Тир', 'Под прилавком — коробка патронов и старая ТОЗ-8.')], give: {weapon: 'tozz', ammo: 25}, spawn: ['tir', 6, ['walker', 'frost'], 24]},
     {t: 'kill', n: 6, obj: 'Зачистите аллеи парка', zone: ['park', 110], spawn: ['park', 8, ['walker', 'runner', 'frost'], 40], reward: {coins: 80, ammo: 20}}
   ]}
@@ -149,6 +162,9 @@ const Quests = (function(){
     if (s.t === 'choice') return pos(s.opts[0].poi);
     if (s.t === 'collect'){ const it = c.items.find(i => !i.got); return it ? [it.x, it.y] : null; }
     if (s.t === 'escort'){ return c.escortGo ? pos(s.to) : [npcs[s.who].x, npcs[s.who].y]; }
+    if (s.t === 'hold'){ const h = c.hold && c.hold.find(v => v.p < 1); return h ? pos(h.k) : null; }
+    if (s.t === 'beam'){ return c.beamOn ? null : pos(s.poi); }
+    if (s.t === 'drive'){ if (c.boarded) return pos(s.to); return c.car && !driving ? [c.car.x, c.car.y] : [npcs[s.who].x, npcs[s.who].y]; }
     if (s.t === 'boss') return c.boss ? [c.boss.x, c.boss.y] : pos(s.poi);
     if (s.t === 'kill') return pos(s.zone ? s.zone[0] : (s.spawn ? s.spawn[0] : 'square'));
     return pos(s.poi);
@@ -176,6 +192,12 @@ const Quests = (function(){
       });
     }
     if (s.t === 'escort'){ const n = npcs[s.who]; const p = freeNear(...pos(s.poi), 0.6); n.x = p[0]; n.y = p[1]; n.follow = false; n.hp = 100; c.waitTalk = true; }
+    if (s.t === 'hold'){ c.hold = s.items.map(k => ({k, p: 0})); }
+    if (s.t === 'beam'){ c.beamOn = false; }
+    if (s.t === 'drive'){
+      const b = pos(s.poi), cp = freeNear(b[0] + s.car[0], b[1] + s.car[1], 3.6); c.car = makeCar(cp[0], cp[1], Math.atan2(pos(s.to)[1] - cp[1], pos(s.to)[0] - cp[0]));
+      const n = npcs[s.who]; const p = freeNear(cp[0] + 2.5, cp[1] + 2.5, 0.5); n.x = p[0]; n.y = p[1]; n.follow = false; n.hidden = false; c.boarded = false;
+    }
     if (s.t === 'boss'){ const p = freeNear(...pos(s.poi), 1.2); const z = makeZombie('boss', p[0], p[1]); z.keep = true; z.questTag = c.def.id; c.boss = z; z.alert = 999; }
     if (s.onStart === 'flameOn') flameLit = true;
     updateUI();
@@ -184,6 +206,7 @@ const Quests = (function(){
     const s = cur(c); if (!s) return;
     if (s.enter) enterLevel(s.enter);
     if (s.exit) leaveLevel();
+    if (s.wake) wakeAll();
     if (s.hide) s.hide.forEach(id => { if (npcs[id]){ npcs[id].hidden = true; npcs[id].follow = false; } });
     if (s.give){
       if (s.give.weapon) { giveWeapon(s.give.weapon, s.give.ammo || 0); toast('Получено: ' + WEAPONS[s.give.weapon].name); }
@@ -210,6 +233,8 @@ const Quests = (function(){
     const c = trackedChain(); 
     for (const cc of [c].concat(ch.filter(o => o !== c && o.active && !o.done))){
       if (!cc) continue; const s = cur(cc); if (!s) continue;
+      if (s.t === 'beam' && !cc.beamOn && LEVEL){ const p = pos(s.poi); if (Math.hypot(hero.x - p[0], hero.y - p[1]) < 3){ cc.beamOn = true; cc.t = 0;
+        LEVEL.beam = {t: 0, ang: 0, base: Math.atan2(30 - LEVEL.beamAt[1], 30 - LEVEL.beamAt[0])}; LEVEL.off.boothdoor = true; toast('Проектор застрекотал. Баррикада рухнула — они идут!', 3); sfx('boom'); updateUI(); return true; } }
       if (s.t === 'talk'){
         const n = npcs[s.who]; if (n && !n.hidden && Math.hypot(n.x - hero.x, n.y - hero.y) < 4.2){ say(s.lines, () => finishStep(cc), s); return true; }
       }
@@ -221,6 +246,8 @@ const Quests = (function(){
   }
   function canInteract(){
     for (const cc of ch){ if (!cc.active || cc.done) continue; const s = cur(cc); if (!s) continue;
+      if (s.t === 'hold' && cc.hold && cc.hold.some(v => v.p < 1 && v.near)) return 'valve';
+      if (s.t === 'beam' && !cc.beamOn){ const p = pos(s.poi); if (Math.hypot(hero.x - p[0], hero.y - p[1]) < 3) return 'proj'; }
       if (s.t === 'talk'){ const n = npcs[s.who]; if (n && !n.hidden && Math.hypot(n.x - hero.x, n.y - hero.y) < 4.2) return s.who; }
       if (s.t === 'escort' && cc.waitTalk){ const n = npcs[s.who]; if (n && Math.hypot(n.x - hero.x, n.y - hero.y) < 4.2) return s.who; }
     }
@@ -252,6 +279,28 @@ const Quests = (function(){
         c.prog = Math.min(s.secs, c.t);
         if (c.t >= s.secs){ zombies.forEach(z => { if (z.questTag === c.def.id) z.hp = 0; }); finishStep(c); }
         if (c.t > 0.5 && c.lastToast !== inz){ c.lastToast = inz; if (!inz) toast('Вернитесь в зону обороны!'); }
+      } else if (s.t === 'hold'){
+        const held = input.act || keys['e'] || keys['у'];
+        for (const v of c.hold){ if (v.p >= 1) continue; const p = pos(v.k); v.near = Math.hypot(hero.x - p[0], hero.y - p[1]) < 2.2;
+          if (v.near && held){ v.p = Math.min(1, v.p + dt/s.secs); if (Math.random() < dt*6) sfx('click'); if (v.p >= 1){ toast('Вентиль открыт (' + c.hold.filter(h => h.p >= 1).length + '/' + c.hold.length + ')'); haptic('medium'); updateUI(); } } }
+        c.prog = c.hold.filter(h => h.p >= 1).length;
+        if (c.prog >= c.hold.length && !c.doneHold){ c.doneHold = true; if (s.onDone === 'flood' && LEVEL){ LEVEL.flooding = true; toast('Вода хлынула в чашу!', 3); } c.t = 0; }
+        if (c.doneHold){ c.t += dt; if (c.t > 3.8) finishStep(c); }
+      } else if (s.t === 'beam'){
+        if (c.beamOn){ c.t += dt; c.prog = Math.min(s.secs, c.t); c.spT = (c.spT || 0) - dt;
+          if (c.spT <= 0 && zombies.length < 20 && LEVEL){ c.spT = s.rate; const doors = [[4, 46], [66, 46], [35, 49]], d = doors[Math.floor(Math.random()*3)], w = lvW(LEVEL, d[0], d[1]);
+            const z = makeZombie(s.types[Math.floor(Math.random()*s.types.length)], w[0], w[1]); z.alert = 30; z.frenzy = true; z.keep = true; z.questTag = c.def.id; }
+          if (c.t >= s.secs){ if (LEVEL) LEVEL.beam = null; zombies.forEach(z => { if (z.questTag === c.def.id) z.hp = Math.min(z.hp, 1); }); finishStep(c); }
+          if (Math.floor(c.t) !== c.lastSec){ c.lastSec = Math.floor(c.t); updateUI(); }
+        }
+      } else if (s.t === 'drive'){
+        const n = npcs[s.who], car = c.car, tgt = pos(s.to);
+        if (!c.boarded && driving === car && Math.hypot(n.x - car.x, n.y - car.y) < 7){ c.boarded = true; n.hidden = true; toast('Ася села в машину'); updateUI(); }
+        if (c.boarded && car.wrecked && n.hidden){ const p = freeNear(car.x + 2, car.y + 2, 0.5); n.x = p[0]; n.y = p[1]; n.hidden = false; n.follow = true; updateUI(); }
+        const there = car.wrecked ? (Math.hypot(n.x - tgt[0], n.y - tgt[1]) < s.r && Math.hypot(hero.x - tgt[0], hero.y - tgt[1]) < s.r)
+                                  : (c.boarded && Math.hypot(car.x - tgt[0], car.y - tgt[1]) < s.r && car.speed < 4);
+        if (there && !c.said && !dlgLines){ c.said = true; if (driving) exitCar(true); const p = freeNear(car.x + 2.5, car.y - 2, 0.5); n.x = p[0]; n.y = p[1]; n.hidden = false; n.follow = false;
+          say(s.lines, () => finishStep(c), s); }
       } else if (s.t === 'escort'){
         const n = npcs[s.who];
         if (n.follow){
@@ -279,6 +328,9 @@ const Quests = (function(){
     if (s.t === 'collect') txt += ' (' + c.prog + '/' + c.items.length + ')';
     if (s.t === 'defend') txt += ' (' + Math.floor(c.prog) + '/' + s.secs + ' с)';
     if (s.t === 'escort' && c.waitTalk) txt = 'Подойдите к ' + (npcs[s.who] ? npcs[s.who].name : '') + ' и поговорите';
+    if (s.t === 'drive') txt = c.boarded ? (c.car && c.car.wrecked ? 'Машина разбита — бегите с Асей к Вечному огню' : 'Гоните к Вечному огню! (ручник — «Бег»)') : (driving ? 'Подъедьте к Асе' : s.obj + ' (сесть — «Действие»)');
+    if (s.t === 'hold') txt += ' (' + (c.prog || 0) + '/' + s.items.length + ')';
+    if (s.t === 'beam' && c.beamOn) txt = 'Держитесь, пока работает проектор (' + Math.floor(c.prog || 0) + '/' + s.secs + ' с)';
     if (s.t === 'choice') txt += ': ' + s.opts.map(o => o.label).join(' или ');
     elT.textContent = c.def.main ? (S.chapter || 'Основное') + ' · ' + c.def.title : 'Побочное · ' + c.def.title;
     elO.textContent = txt; elP.style.width = Math.round(100*c.si/c.def.steps.length) + '%';
@@ -290,6 +342,6 @@ const Quests = (function(){
   }
   function itemsToDraw(){ const out = []; ch.forEach(c => { if (c.active && !c.done) c.items.forEach(i => { if (!i.got) out.push(i); }); }); return out; }
   function defendInfo(){ const c = trackedChain(); if (!c) return null; const s = cur(c); return s && s.t === 'defend' ? {p: pos(s.poi), r: s.r} : null; }
-  return {update, interact, canInteract, onKill, onNpcDead, updateUI, targets, itemsToDraw, defendInfo, levelWanted(){ for (const c of ch){ if (!c.active || c.done) continue; const s = cur(c); if (s && s.level) return s.level; } return null; }, curType(){ const c = ch[0]; const s = c && cur(c); return s ? s.t : null; }, chains: ch, progressCount: () => completed, cycle(){ for (let k = 1; k <= ch.length; k++){ const i = (tracked + k)%ch.length; if (ch[i].active && !ch[i].done){ tracked = i; break; } } updateUI(); }, start(){ ch.forEach(c => { if (c.active) beginStep(c); }); updateUI(); }};
+  return {update, interact, canInteract, onKill, onNpcDead, updateUI, targets, itemsToDraw, defendInfo, holdInfo(){ const c = trackedChain(); if (!c) return null; const s = cur(c); if (!s || s.t !== 'hold' || !c.hold) return null; return c.hold.map(v => ({x: pos(v.k)[0], y: pos(v.k)[1], p: v.p})); }, levelWanted(){ for (const c of ch){ if (!c.active || c.done) continue; const s = cur(c); if (s && s.level) return s.level; } return null; }, curType(){ const c = ch[0]; const s = c && cur(c); return s ? s.t : null; }, chains: ch, progressCount: () => completed, cycle(){ for (let k = 1; k <= ch.length; k++){ const i = (tracked + k)%ch.length; if (ch[i].active && !ch[i].done){ tracked = i; break; } } updateUI(); }, start(){ ch.forEach(c => { if (c.active) beginStep(c); }); updateUI(); }};
 })();
 let flameLit = false;

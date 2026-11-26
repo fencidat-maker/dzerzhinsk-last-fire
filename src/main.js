@@ -7,8 +7,12 @@ function resize(){
   DPR = Math.min(window.devicePixelRatio || 1, 2.2);
   W = innerWidth; H = innerHeight;
   cv.width = Math.round(W*DPR); cv.height = Math.round(H*DPR);
-  VWu = (W < H ? 360 : Math.max(470, 360*W/H*0.62))/ZOOM;
-  K = cv.width/VWu; VHu = cv.height/K;
+  applyZoom();
+}
+let zoomApplied = 0;
+function applyZoom(){
+  const z = ZOOM/(typeof camZoomCur !== 'undefined' ? camZoomCur : 1); zoomApplied = z;
+  VWu = (W < H ? 360 : Math.max(470, 360*W/H*0.62))/z; K = cv.width/VWu; VHu = cv.height/K;
 }
 addEventListener('resize', resize); resize();
 
@@ -95,6 +99,7 @@ const corpseDraw = (c, cp) => {
 // ---------------------------------------------------------------- frame
 let camX = 0, camY = 0, camInit = false;
 function render(){
+  if (Math.abs(ZOOM/camZoomCur - zoomApplied) > 0.002) applyZoom();
   cx.setTransform(1, 0, 0, 1, 0, 0); cx.fillStyle = LEVEL ? '#0e0a16' : '#c9b4c6'; cx.fillRect(0, 0, cv.width, cv.height);
   const hs = P(hero.x, hero.y, 0);
   let tx = hs[0] - VWu/2 + (hero.fx ? -hero.fx*0 : 0), ty = hs[1] - VHu*0.52;
@@ -104,7 +109,7 @@ function render(){
   cx.setTransform(K, 0, 0, K, -cX*K, -cY*K);
   cx.imageSmoothingEnabled = true; cx.imageSmoothingQuality = 'high';
   const vx0 = cX, vy0 = cY, vx1 = cX + VWu, vy1 = cY + VHu;
-  if (LEVEL) drawLevelBg(cx); else drawTiles(cx, vx0 - 300, vy0 - 300, vx1 + 300, vy1 + 300, true);   // loads neighbours too
+  if (LEVEL){ drawLevelBg(cx); drawLevelOverlay(cx); } else drawTiles(cx, vx0 - 300, vy0 - 300, vx1 + 300, vy1 + 300, true);   // loads neighbours too
   // footprints in the snow
   cx.save();
   for (const f of footprints){
@@ -126,7 +131,9 @@ function render(){
   const inView = o => { const s = P(o.x, o.y, 0); return s[0] > vx0 - 60 && s[0] < vx1 + 60 && s[1] > vy0 - 40 && s[1] < vy1 + 100; };
   for (const z of zombies) if (inView(z)) items.push(z);
   for (const k in npcs) if (!npcs[k].hidden && inView(npcs[k])) items.push(npcs[k]);
-  items.push(hero);
+  if (!hero.inCar) items.push(hero);
+  if (hero.air){ const s = P(hero.x, hero.y, 0); cx.fillStyle = 'rgba(20,14,30,.35)'; cx.beginPath(); cx.ellipse(s[0], s[1], 8, 3.5, 0, 0, TAU); cx.fill(); }
+  for (const c of CARS) if (inView(c)) items.push(c);
   for (const p of pickups) if (inView(p)){ p.dyn = true; p.draw = null; p.hgt = 1; p._pk = true; items.push(p); }
   for (const it of Quests.itemsToDraw()) if (inView(it)){ it.dyn = true; it._qi = true; it.hgt = 1; items.push(it); }
   for (const cp of corpses) if (inView(cp)){ cp.dyn = true; cp._cp = true; cp.hgt = 0.5; items.push(cp); }
@@ -146,7 +153,7 @@ function render(){
   }
   const drawItem = o => {
     o.depth = depthOf(o.x, o.y);
-    if (o._pk) drawPickup(cx, o, time); else if (o._qi) drawQuestItem(cx, o, time); else if (o._cp) corpseDraw(cx, o); else drawSprite(cx, o, time);
+    if (o._car) drawCar(cx, o); else if (o._pk) drawPickup(cx, o, time); else if (o._qi) drawQuestItem(cx, o, time); else if (o._cp) corpseDraw(cx, o); else drawSprite(cx, o, time);
   };
   // ground effects first (fire pools, defend zone ring)
   for (const f of fires){ const s = P(f.x, f.y, 0); cx.save(); cx.translate(s[0], s[1]); const fl = 0.6 + Math.sin(time*18 + f.x)*0.2; cx.fillStyle = 'rgba(255,120,40,' + 0.35*fl + ')'; cx.beginPath(); cx.ellipse(0, 0, 28, 13, 0, 0, TAU); cx.fill(); cx.fillStyle = 'rgba(255,200,80,' + 0.5*fl + ')'; cx.beginPath(); cx.ellipse(0, -3, 16, 7, 0, 0, TAU); cx.fill(); cx.restore(); }
@@ -155,6 +162,9 @@ function render(){
     slots[i].sort((a, b) => depthOf(a.x, a.y) - depthOf(b.x, b.y)).forEach(drawItem);
     if (i < vbl.length) redrawSil(cx, vbl[i]);
   }
+  if (LEVEL) drawLevelBeam(cx);
+  { const hi = Quests.holdInfo(); if (hi) for (const v of hi){ if (v.p >= 1) continue; const s = P(v.x, v.y, 3.2); cx.save(); cx.lineWidth = 2.2; cx.strokeStyle = 'rgba(30,20,40,.7)'; cx.beginPath(); cx.arc(s[0], s[1], 6, 0, TAU); cx.stroke();
+      cx.strokeStyle = '#ffd36a'; cx.beginPath(); cx.arc(s[0], s[1], 6, -Math.PI/2, -Math.PI/2 + TAU*v.p); cx.stroke(); cx.restore(); } }
   // bullets & particles
   for (const b of bullets){
     if (b.mol){ const s = P(b.x, b.y, b.z); cx.fillStyle = '#ffb04a'; cx.fillRect(s[0] - 3, s[1] - 3, 6, 6); continue; }
@@ -260,7 +270,7 @@ function nextLine(){ if (!dlgLines) return; dlgIdx++; if (dlgIdx >= dlgLines.len
 elDlg.addEventListener('pointerdown', e => { e.stopPropagation(); nextLine(); });
 window.openDialog = openDialog;
 function uiBlock(){ return !!dlgLines || !running; }
-function interact(){ if (dlgLines){ nextLine(); return; } if (Quests.interact()) return; }
+function interact(){ if (dlgLines){ nextLine(); return; } if (driving){ exitCar(); return; } if (Quests.interact()) return; const c = nearCar(3.4); if (c && !c.wrecked) enterCar(c); }
 function onDeath(){ $('dead').style.display = 'flex'; input.x = input.y = 0; input.fire = false; }
 function respawn(){
   if (LEVEL) leaveLevel(true);
@@ -274,7 +284,7 @@ $('rs').addEventListener('click', respawn);
 const input2 = null;
 addEventListener('keydown', e => { if (slidesOn){ if (e.key === 'Escape') document.querySelector('#sl .sls').dispatchEvent(new Event('pointerdown')); else document.getElementById('sl').dispatchEvent(new Event('pointerdown')); return; }
   const k = e.key.toLowerCase();
-  if ([' ', 'enter', 'e', 'у'].includes(k)){ e.preventDefault(); if (!e.repeat) interact(); return; }
+  if ([' ', 'enter', 'e', 'у'].includes(k)){ e.preventDefault(); keys[k] = true; if (!e.repeat) interact(); return; }
   if (k === 'r' || k === 'к') startReload(); if (k === 'q' || k === 'й') switchWeapon(1); if (k === 'h' || k === 'р') useMed(); if (k === 'm' || k === 'ь'){ bigMap = !bigMap; mm.classList.toggle('big', bigMap); }
   if (k === 'tab'){ e.preventDefault(); Quests.cycle(); }
   keys[k] = true;
@@ -304,7 +314,7 @@ function joyEnd(e){ if (e.pointerType === 'mouse'){ input.fire = false; input.ai
 cv.addEventListener('pointerup', joyEnd); cv.addEventListener('pointercancel', joyEnd);
 function hold(el, on, off){ el.addEventListener('pointerdown', e => { e.stopPropagation(); e.preventDefault(); on(); try { el.setPointerCapture(e.pointerId); } catch (_) {} }); const o = e => { off && off(); }; el.addEventListener('pointerup', o); el.addEventListener('pointercancel', o); el.addEventListener('lostpointercapture', o); }
 hold($('bfire'), () => { if (!dlgLines && running) input.fire = true; }, () => { input.fire = false; });
-$('bact').addEventListener('pointerdown', e => { e.stopPropagation(); interact(); });
+hold($('bact'), () => { input.act = true; interact(); }, () => { input.act = false; });
 $('brel').addEventListener('pointerdown', e => { e.stopPropagation(); startReload(); });
 $('bwp').addEventListener('pointerdown', e => { e.stopPropagation(); switchWeapon(1); });
 $('bmed').addEventListener('pointerdown', e => { e.stopPropagation(); useMed(); });
@@ -331,12 +341,12 @@ function frame(ts){
   const dt = Math.min(0.05, (ts - last)/1000 || 0.016); last = ts; dtLast = dt; time += dt;
   if (running){
     if (!dlgLines && !slidesOn){
-      levelTick(); updateHero(dt); updateZombies(dt); updateNpcs(dt); updateBullets(dt); updatePickups(dt); spawnTick(dt); Quests.update(dt);
+      levelTick(); updateHero(dt); levelUpdate(dt); updateCars(dt); updateZombies(dt); updateNpcs(dt); updateBullets(dt); updatePickups(dt); spawnTick(dt); Quests.update(dt);
       zombieCap = 12 + Math.min(10, Math.floor(Quests.progressCount()/2));
       S.stamina = Math.max(0, Math.min(100, S.stamina)); elSt.style.width = S.stamina + '%';
       for (const cp of corpses) cp.t += dt; for (const f of footprints) f.t += dt; while (footprints.length && footprints[0].t > 40) footprints.shift();
     } else { updateNpcs(dt*0); }
-    const w = curW(); const can = Quests.canInteract(); elAct.classList.toggle('ready', !!can);
+    const w = curW(); const nc = nearCar(3.4), can = Quests.canInteract() || driving || (nc && !nc.wrecked); elAct.classList.toggle('ready', !!can);
     $('bact').classList.toggle('ready', !!can);
     if (hero.reloadT > 0) $('brel').textContent = '…'; else $('brel').textContent = '↻';
     zombies.forEach(z => z.depth = depthOf(z.x, z.y));
@@ -350,4 +360,4 @@ $('go').addEventListener('click', () => {
   try { const w = window.Telegram.WebApp; w.ready(); w.expand(); if (w.disableVerticalSwipes) w.disableVerticalSwipes(); } catch (_) {}
 });
 requestAnimationFrame(frame);
-window.__dbg = {AUD, enterLevel, leaveLevel, LEVELS, get LEVEL(){ return LEVEL; }, colMask, nearestFire, CM, hero, S, zombies, Quests, tiles, P, POI, blocked, occludersOf, input, freeNear, npcs, bullets, pickups, giveWeapon, makeZombie, nextLine, interact, killZombie, hud, get dlg(){ return dlgLines; }, get zlist(){ return zombies; }, step(dt){ updateHero(dt); updateZombies(dt); updateNpcs(dt); updateBullets(dt); updatePickups(dt); Quests.update(dt); }};
+window.__dbg = {AUD, makeNoise, wakeAll, inPit, CARS, makeCar, enterCar, exitCar, get driving(){ return driving; }, enterLevel, leaveLevel, LEVELS, get LEVEL(){ return LEVEL; }, colMask, nearestFire, CM, hero, S, zombies, Quests, tiles, P, POI, blocked, occludersOf, input, freeNear, npcs, bullets, pickups, giveWeapon, makeZombie, nextLine, interact, killZombie, hud, get dlg(){ return dlgLines; }, get zlist(){ return zombies; }, step(dt){ updateHero(dt); updateCars(dt); updateZombies(dt); updateNpcs(dt); updateBullets(dt); updatePickups(dt); Quests.update(dt); }};

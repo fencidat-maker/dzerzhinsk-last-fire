@@ -19,6 +19,8 @@ function fireLights(vx0, vy0, vx1, vy1){
   for (const f of fires){ const s = P(f.x, f.y, 0); L.push({x: s[0], y: s[1] - 6, r: 110, i: flick(f.x, time)*Math.min(1, (f.life - f.t)/1.5), dyn: true}); }
   if (typeof flameLit !== 'undefined' && flameLit){ const s = P(POI.flame[0], POI.flame[1], 0); L.push({x: s[0], y: s[1] - 10, r: 160, i: flick(3, time)}); }
   if (LEVEL) L.push(...levelLights());
+  if (typeof carLights === 'function') L.push(...carLights());
+  if (LEVEL) L.push(...beamLights());
   if (hero.muzzle > 0){ const s = P(hero.x, hero.y, 1.2); L.push({x: s[0], y: s[1], r: 90, i: 1.2, muzzle: true}); }
   return L;
 }
