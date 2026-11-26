@@ -21,6 +21,7 @@ function pupShadow(c, h, w){
   c.restore();
 }
 function drawPuppet(c, atlas, sheet, col, view, h, o){
+  h *= CHS;
   const A = PUP.atlases[atlas], im = PUPIMG[atlas];
   if (!A || !pupReady(atlas) || A.rows[sheet] == null) return false;
   o = o || {};
@@ -60,7 +61,7 @@ function drawHeroPuppet(c){
   if (hero.hurtT > 0) return drawPuppet(c, 'hero', 'misc', 3, view, HERO_H, {flash});
   const sheet = HERO_SHEET[wid] || 'walk', n = WALK_N[sheet] || 4;
   if (!hero.moving) return drawPuppet(c, 'hero', sheet, 0, view, HERO_H, {flash, bob: Math.sin(time*2)*0.12});
-  const ph = (hero.walkPx || 0)/(HERO_H*STRIDE);
+  const ph = (hero.walkPx || 0)/(HERO_H*CHS*STRIDE);
   if (PUP.atlases.hwalk && PUP.atlases.hwalk.rows[sheet] != null && pupReady('hwalk'))
     return drawPuppet(c, 'hwalk', sheet, Math.floor(ph*8)%8, view, HERO_H, {flash});
   const fr = Math.floor(ph*n)%n;
@@ -72,7 +73,7 @@ function drawZombiePuppet(c, z){
   const view = pupView(z.fx || 0.3, z.fy || 0.6), h = ZOMB_H[z.type] || 40;
   if (z.dead) return drawPuppet(c, 'zomb', z.type, 5, view, h, {alpha: Math.min(1, z.deadT/1.2), noShadow: true});
   if (z.atkT > 0) return drawPuppet(c, 'zomb', z.type, 4, view, h, {flash: z.flash > 0});
-  const ph = (z.walkPx || 0)/(h*(z.type === 'runner' ? 1.3 : 0.9));
+  const ph = (z.walkPx || 0)/(h*CHS*(z.type === 'runner' ? 1.3 : 0.9));
   if (PUP.atlases.zwalk && PUP.atlases.zwalk.rows[z.type] != null && pupReady('zwalk') && !(VSKIP[z.type] && VSKIP[z.type].includes(view[0])))
     return drawPuppet(c, 'zwalk', z.type, Math.floor(ph*8)%8, view, h, {flash: z.flash > 0, shw: z.type === 'brute' || z.type === 'boss' ? 0.34 : 0.27});
   const fr = Math.floor(ph*4)%4;

@@ -1,12 +1,13 @@
 // ====================================================================== renderer, UI, loop
 const cv = $('game'), cx = cv.getContext('2d');
 let W = 0, H = 0, DPR = 1, VWu = 430, K = 1, VHu = 800;
-const CU = 1.75;                       // sprite unit in P-space
+const ZOOM = 1.7, CHS = 0.6, SPD_S = 0.8;   // camera zoom; character scale vs. the painted city; movement scale
+const CU = 1.75*CHS;                   // sprite unit in P-space
 function resize(){
   DPR = Math.min(window.devicePixelRatio || 1, 2.2);
   W = innerWidth; H = innerHeight;
   cv.width = Math.round(W*DPR); cv.height = Math.round(H*DPR);
-  VWu = W < H ? 360 : Math.max(470, 360*W/H*0.62);
+  VWu = (W < H ? 360 : Math.max(470, 360*W/H*0.62))/ZOOM;
   K = cv.width/VWu; VHu = cv.height/K;
 }
 addEventListener('resize', resize); resize();
@@ -68,7 +69,7 @@ function drawSprite(c, o, time){
 }
 function drawPickup(c, p, time){
   const s = P(p.x, p.y, 0), bob = Math.sin(time*4 + p.x)*1.2;
-  c.save(); c.translate(s[0], s[1]);
+  c.save(); c.translate(s[0], s[1]); c.scale(0.72, 0.72);
   c.fillStyle = 'rgba(30,20,50,.3)'; c.beginPath(); c.ellipse(0, 0, 5, 2, 0, 0, TAU); c.fill();
   if (p.kind === 'coin'){ c.fillStyle = '#1d1528'; c.fillRect(-4, -11 + bob, 8, 8); c.fillStyle = '#ffd36a'; c.fillRect(-3, -10 + bob, 6, 6); c.fillStyle = '#fff1b0'; c.fillRect(-2, -9 + bob, 2, 3); }
   else if (p.kind === 'ammo'){ c.fillStyle = '#1d1528'; c.fillRect(-6, -12 + bob, 12, 9); c.fillStyle = '#7a8a52'; c.fillRect(-5, -11 + bob, 10, 7); c.fillStyle = '#e8d070'; c.fillRect(-3, -9 + bob, 6, 2); }
@@ -112,8 +113,8 @@ function render(){
     const al = Math.max(0, 1 - f.t/40);
     cx.setTransform(K*Math.cos(ang), K*Math.sin(ang), -K*Math.sin(ang), K*Math.cos(ang), (s[0] - cX)*K, (s[1] - cY)*K);
     cx.globalAlpha = 0.5*al; cx.fillStyle = '#4a4872';
-    cx.beginPath(); cx.ellipse(0.9, 0, 1.25, 0.85, 0, 0, TAU); cx.fill();     // sole
-    cx.beginPath(); cx.ellipse(-1.2, 0, 0.75, 0.7, 0, 0, TAU); cx.fill();     // heel
+    cx.beginPath(); cx.ellipse(0.9*CHS, 0, 1.25*CHS, 0.85*CHS, 0, 0, TAU); cx.fill();     // sole
+    cx.beginPath(); cx.ellipse(-1.2*CHS, 0, 0.75*CHS, 0.7*CHS, 0, 0, TAU); cx.fill();     // heel
     cx.globalAlpha = 0.28*al; cx.fillStyle = '#ffffff';
     cx.beginPath(); cx.ellipse(0.6, -0.8, 1.2, 0.3, 0, 0, TAU); cx.fill();
   }
@@ -163,7 +164,7 @@ function render(){
   for (const p of parts){ const s = P(p.x, p.y, p.z); cx.globalAlpha = Math.max(0, 1 - p.t/p.life); cx.fillStyle = p.col; cx.fillRect(s[0] - 1.5, s[1] - 1.5, 3, 3); cx.globalAlpha = 1; }
   const LIGHTS = drawFireFX(cx, vx0, vy0, vx1, vy1);
   if (hero.hidden && !S.dead){ cx.globalAlpha = 0.42; drawSprite(cx, hero, time); cx.globalAlpha = 1; }
-  for (const f of floaters){ const s = P(f.x, f.y, 3 + f.t*2); cx.globalAlpha = Math.max(0, 1 - f.t); cx.font = 'bold 11px system-ui'; cx.textAlign = 'center'; cx.fillStyle = '#1d1528'; cx.fillText(f.txt, s[0] + 0.7, s[1] + 0.7); cx.fillStyle = f.col; cx.fillText(f.txt, s[0], s[1]); cx.globalAlpha = 1; }
+  for (const f of floaters){ const s = P(f.x, f.y, 3 + f.t*2); cx.globalAlpha = Math.max(0, 1 - f.t); cx.font = 'bold ' + (13/ZOOM).toFixed(1) + 'px system-ui'; cx.textAlign = 'center'; cx.fillStyle = '#1d1528'; cx.fillText(f.txt, s[0] + 0.7, s[1] + 0.7); cx.fillStyle = f.col; cx.fillText(f.txt, s[0], s[1]); cx.globalAlpha = 1; }
   drawLightMap(cx, LIGHTS, cX, cY);
   // dusk vignette
   cx.setTransform(1, 0, 0, 1, 0, 0);
@@ -213,7 +214,25 @@ function drawMini(){
   c.font = '600 ' + Math.round((bigMap ? 10 : 8.5)*DPR) + 'px Georgia, serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
   for (const L of MM_LAB){ const p = POI[L[0]]; if (!p || (bigMap && L[2])) continue; const q = toM(p[0], p[1]); if (q[0] < -40 || q[0] > R + 40 || q[1] < -10 || q[1] > R + 10) continue;
     c.lineWidth = 3*DPR; c.strokeStyle = 'rgba(28,20,40,.9)'; c.strokeText(L[1], q[0], q[1]); c.fillStyle = '#ffe2a0'; c.fillText(L[1], q[0], q[1]); }
-  Quests.targets().forEach(t => { const p = toM(t.x, t.y); c.fillStyle = t.main ? '#ffd36a' : '#9ad4ff'; c.strokeStyle = '#2a1c3a'; c.lineWidth = 2; c.beginPath(); c.arc(Math.max(8, Math.min(R - 8, p[0])), Math.max(8, Math.min(R - 8, p[1])), 5*DPR/2 + 2, 0, TAU); c.fill(); c.stroke(); });
+  Quests.targets().forEach(t => {
+    const p = toM(t.x, t.y), col = t.main ? '#ffd36a' : '#9ad4ff', cxm = R/2, cym = R/2;
+    const dx = p[0] - cxm, dy = p[1] - cym, dd = Math.hypot(dx, dy), rim = R/2 - 11*DPR;
+    if (dd < rim){   // target inside the map: pulsing marker
+      const pr = (4 + Math.sin(time*5)*1.2)*DPR;
+      c.fillStyle = col; c.strokeStyle = '#2a1c3a'; c.lineWidth = 2*DPR; c.beginPath(); c.arc(p[0], p[1], pr, 0, TAU); c.fill(); c.stroke();
+      c.strokeStyle = col; c.globalAlpha = 0.5; c.lineWidth = 1.5*DPR; c.beginPath(); c.arc(p[0], p[1], pr + 4*DPR + (time*8)%6*DPR, 0, TAU); c.stroke(); c.globalAlpha = 1;
+    } else {         // off the map: arrow on the rim pointing towards the target
+      const an = Math.atan2(dy, dx), ax = cxm + Math.cos(an)*rim, ay = cym + Math.sin(an)*rim, a = 9*DPR;
+      c.save(); c.translate(ax, ay); c.rotate(an);
+      c.fillStyle = col; c.strokeStyle = '#2a1c3a'; c.lineWidth = 2*DPR;
+      c.beginPath(); c.moveTo(a, 0); c.lineTo(-a*0.75, a*0.75); c.lineTo(-a*0.35, 0); c.lineTo(-a*0.75, -a*0.75); c.closePath(); c.stroke(); c.fill();
+      c.restore();
+    }
+    if (t.main && !bigMap){   // dashed guide line from hero to target (clipped by the circle)
+      c.save(); c.setLineDash([3*DPR, 4*DPR]); c.strokeStyle = 'rgba(255,211,106,.55)'; c.lineWidth = 1.5*DPR;
+      c.beginPath(); c.moveTo(cxm, cym); const e = dd < rim ? p : [cxm + dx/dd*rim*0.9, cym + dy/dd*rim*0.9]; c.lineTo(e[0], e[1]); c.stroke(); c.restore();
+    }
+  });
   zombies.forEach(z => { const p = toM(z.x, z.y); if (p[0] > 0 && p[0] < R && p[1] > 0 && p[1] < R){ c.fillStyle = '#e04a4a'; c.fillRect(p[0] - 1.5, p[1] - 1.5, 3, 3); } });
   const hp2 = toM(hero.x, hero.y), hf = toM(hero.x + (hero.fx || 0)*6, hero.y + (hero.fy || 1)*6); const an = Math.atan2(hf[1] - hp2[1], hf[0] - hp2[0]), a = 7*DPR;
   c.save(); c.translate(hp2[0], hp2[1]); c.rotate(an); c.fillStyle = '#4fe0ff'; c.strokeStyle = '#fff'; c.lineWidth = 1.5*DPR; c.beginPath(); c.moveTo(a, 0); c.lineTo(-a*0.7, a*0.65); c.lineTo(-a*0.35, 0); c.lineTo(-a*0.7, -a*0.65); c.closePath(); c.fill(); c.stroke(); c.restore();

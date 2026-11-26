@@ -147,7 +147,7 @@ function updateZombies(dt){
     if (d > 150 && !z.keep){ zombies.splice(i, 1); continue; }
     if (z.burn > 0){ z.burn -= dt; z.hp -= 18*dt; if (z.hp <= 0){ killZombie(z, i); continue; } }
     if (z.spawnT < 0.6){ z.spawnT += dt; }
-    let mvx = 0, mvy = 0, sp = T.spd;
+    let mvx = 0, mvy = 0, sp = T.spd*SPD_S;
     const chasing = !S.dead && (d < T.sight && (d < 9 || losClear(z.x, z.y, hero.x, hero.y)) || z.alert > 0 || z.boss);
     if (z.alert > 0) z.alert -= dt;
     if (chasing){
@@ -331,7 +331,7 @@ function updateHero(dt){
   if (!S.dead && !uiBlock() && mag > 0.06){
     const g = unrot(ix, iy), gl = Math.hypot(g[0], g[1]) || 1, gx = g[0]/gl, gy = g[1]/gl;
     const sprint = (input.sprint || keys['shift']) && S.stamina > 2;
-    let sp = (sprint ? 13.5 : 9.0)*mag; if (S.slow > 0) sp *= 0.55;
+    let sp = (sprint ? 13.5 : 9.0)*mag*SPD_S; if (S.slow > 0) sp *= 0.55;
     { const a = P(gx, gy, 0), b = P(0, 0, 0); sp *= Math.min(2.1, SCREEN_REF/Math.max(0.001, Math.hypot(a[0] - b[0], a[1] - b[1]))); }
     if (sprint){ S.stamina = Math.max(0, S.stamina - 22*dt); }
     const ox = hero.x, oy = hero.y;
@@ -372,7 +372,7 @@ function updateNpcs(dt){
     if (n.hidden) continue;
     if (n.follow && !S.dead){
       const d = Math.hypot(hero.x - n.x, hero.y - n.y);
-      if (d > 3.2){ const dx = (hero.x - n.x)/d, dy = (hero.y - n.y)/d, sp = Math.min(9.5, 3 + d*0.7); moveEntity(n, dx*sp*dt, dy*sp*dt, 0.45); n.moving = true; n.dir = screenDirOf(dx, dy); n.fx = dx; n.fy = dy; }
+      if (d > 3.2){ const dx = (hero.x - n.x)/d, dy = (hero.y - n.y)/d, sp = Math.min(9.5, 3 + d*0.7)*SPD_S; moveEntity(n, dx*sp*dt, dy*sp*dt, 0.45); n.moving = true; n.dir = screenDirOf(dx, dy); n.fx = dx; n.fy = dy; }
       for (const z of zombies){ const zd = Math.hypot(z.x - n.x, z.y - n.y); if (zd < 1.4 && z.cool <= 0 && !z.alert) { } if (zd < z.T.r + 0.9){ if (!z.npcCool || z.npcCool < time){ z.npcCool = time + 1.0; n.hp -= z.T.dmg*0.5; n.flash = 0.15; } } }
       if (n.hp <= 0 && Quests.onNpcDead) Quests.onNpcDead(n);
     } else if (!n.follow){ const dx = hero.x - n.x, dy = hero.y - n.y; if (Math.hypot(dx, dy) < 14){ n.dir = screenDirOf(dx, dy); n.fx = dx; n.fy = dy; } }
