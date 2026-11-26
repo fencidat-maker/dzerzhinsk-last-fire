@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Последний огонь Дзержинска</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none}
+html,body{margin:0;height:100%;background:#1c1828;overflow:hidden;touch-action:none;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;color:#fff}
+#game{position:fixed;left:0;top:0;width:100%;height:100%;display:block}
+.ui{position:fixed;z-index:5}
+.pill{background:rgba(36,26,52,.82);border:1px solid rgba(255,214,140,.35);border-radius:12px;backdrop-filter:blur(3px);box-shadow:0 4px 16px rgba(0,0,0,.35)}
+#quest{left:max(10px,env(safe-area-inset-left));top:max(10px,env(safe-area-inset-top));max-width:min(64vw,360px);padding:8px 11px;pointer-events:auto}
+#quest .t{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#f6c36b;margin-bottom:2px}
+#quest .o{font-size:13px;line-height:1.3;color:#fff4de}
+#quest .p{margin-top:6px;height:4px;border-radius:2px;background:rgba(255,255,255,.15);overflow:hidden}
+#quest .p i{display:block;height:100%;width:0;background:linear-gradient(90deg,#f6c36b,#ff9f4a);transition:width .4s}
+#bars{left:max(10px,env(safe-area-inset-left));top:calc(max(10px,env(safe-area-inset-top)) + 88px);width:150px;padding:6px 8px;pointer-events:none}
+.bar{height:9px;border-radius:5px;background:rgba(255,255,255,.14);overflow:hidden;margin:2px 0}
+.bar i{display:block;height:100%;width:100%;background:#7bd96a;transition:width .15s}
+#stf{background:#f6c36b!important}
+#wpn{font-size:12px;margin-top:3px;color:#fff4de}
+#coins{right:max(10px,env(safe-area-inset-right));top:calc(max(10px,env(safe-area-inset-top)) + 122px);padding:4px 12px;font-weight:700;font-size:14px;color:#ffe6b0;border-radius:999px;pointer-events:none}
+#bsnd{position:fixed;right:max(12px,env(safe-area-inset-right));top:calc(max(10px,env(safe-area-inset-top)) + 150px);z-index:6;width:34px;height:34px;border-radius:50%;background:rgba(30,20,44,.75);border:1px solid rgba(255,214,140,.55);color:#ffd68c;font:18px/34px serif;text-align:center;pointer-events:auto;user-select:none}#bsnd.off{opacity:.45;text-decoration:line-through}
+#mm{position:fixed;right:max(10px,env(safe-area-inset-right));top:max(10px,env(safe-area-inset-top));z-index:6;width:140px;height:140px;border-radius:50%;box-shadow:0 4px 16px rgba(0,0,0,.45);pointer-events:auto}
+#mm.big{left:50%;top:50%;right:auto;transform:translate(-50%,-50%);z-index:30}
+#toast{left:50%;top:max(150px,calc(env(safe-area-inset-top) + 140px));transform:translate(-50%,-10px);opacity:0;background:rgba(255,240,205,.96);color:#3a2a14;border-radius:999px;padding:9px 18px;font-weight:600;font-size:14px;transition:opacity .25s,transform .25s;max-width:88vw;text-align:center;pointer-events:none}
+#toast.on{opacity:1;transform:translate(-50%,0)}
+#joyBase{width:140px;height:140px;margin:-56px 0 0 -56px;border-radius:50%;border:2px solid rgba(255,255,255,.35);background:rgba(255,255,255,.08);display:none;pointer-events:none}
+#joyKnob{position:absolute;left:50%;top:50%;width:50px;height:50px;margin:-25px 0 0 -25px;border-radius:50%;background:rgba(255,236,200,.55);border:2px solid rgba(255,255,255,.7)}
+.b{position:fixed;z-index:6;border-radius:50%;border:3px solid rgba(255,255,255,.65);background:rgba(36,26,52,.55);color:#fff;font-weight:700;display:flex;align-items:center;justify-content:center;pointer-events:auto;touch-action:none}
+.b:active{background:rgba(246,195,107,.7)}
+#bfire{right:max(14px,env(safe-area-inset-right));bottom:max(24px,env(safe-area-inset-bottom));width:92px;height:92px;font-size:15px;background:rgba(214,70,60,.55)}
+#bact{right:calc(max(14px,env(safe-area-inset-right)) + 106px);bottom:max(30px,env(safe-area-inset-bottom));width:72px;height:72px;font-size:12px;opacity:.5}
+#bact.ready{opacity:1;background:rgba(246,195,107,.9);color:#3a2a14}
+#brel{right:calc(max(14px,env(safe-area-inset-right)) + 120px);bottom:calc(max(24px,env(safe-area-inset-bottom)) + 100px);width:52px;height:52px;font-size:22px}
+#bwp{right:max(14px,env(safe-area-inset-right));bottom:calc(max(24px,env(safe-area-inset-bottom)) + 104px);width:52px;height:52px;font-size:11px}
+#bmed{right:calc(max(14px,env(safe-area-inset-right)) + 60px);bottom:calc(max(24px,env(safe-area-inset-bottom)) + 104px);width:52px;height:52px;font-size:12px}
+#bspr{left:max(14px,env(safe-area-inset-left));bottom:max(24px,env(safe-area-inset-bottom));width:56px;height:56px;font-size:11px}
+#bspr.on{background:rgba(246,195,107,.8);color:#3a2a14}
+#medn{margin-left:3px;font-size:11px}
+#sl{position:fixed;inset:0;z-index:40;background:#07050c;display:none;opacity:0;transition:opacity .6s;overflow:hidden;touch-action:none;user-select:none}
+#sl.on{opacity:1}
+#sl .sla,#sl .slb{position:absolute;inset:0;background-size:cover;background-position:center;opacity:0;transition:opacity 1.1s ease}
+#sl .kb0{animation:kb0 11s ease-out forwards}#sl .kb1{animation:kb1 11s ease-out forwards}
+@keyframes kb0{from{transform:scale(1.04) translate(0,0)}to{transform:scale(1.16) translate(-2%,-2.5%)}}
+@keyframes kb1{from{transform:scale(1.16) translate(2%,1.5%)}to{transform:scale(1.05) translate(0,0)}}
+#sl .slg{position:absolute;left:0;right:0;bottom:0;height:52%;background:linear-gradient(to top,rgba(7,5,12,.96) 30%,rgba(7,5,12,0))}
+#sl .slt{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(max(26px,env(safe-area-inset-bottom)) + 34px);width:min(88vw,560px);color:#fff1d8;font:17px/1.5 Georgia,'Times New Roman',serif;text-shadow:0 2px 8px #000;min-height:5.5em}
+#sl .sld{position:absolute;left:50%;transform:translateX(-50%);bottom:max(20px,env(safe-area-inset-bottom));display:flex;gap:7px}
+#sl .sld i{width:7px;height:7px;border-radius:50%;background:rgba(255,225,170,.3)}#sl .sld i.on{background:#f6c36b}
+#sl .sls{position:absolute;right:max(14px,env(safe-area-inset-right));top:max(14px,env(safe-area-inset-top));padding:7px 14px;border-radius:16px;border:1px solid rgba(246,195,107,.6);color:#f6c36b;font:13px system-ui;background:rgba(10,6,16,.5)}
+#dlg{position:fixed;z-index:15;left:50%;bottom:max(22px,env(safe-area-inset-bottom));transform:translateX(-50%);width:min(92vw,560px);background:rgba(34,24,48,.95);border:2px solid #f6c36b;border-radius:14px;padding:12px 16px 10px;display:none;box-shadow:0 8px 28px rgba(0,0,0,.5)}
+#dlg .n{font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:#f6c36b;margin-bottom:4px}
+#dlg .x{font-size:15px;line-height:1.4;color:#fff4de}
+#dlg .m{margin-top:8px;font-size:11px;color:rgba(255,255,255,.5);text-align:right}
+#start,#dead{position:fixed;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;padding:20px;background:radial-gradient(ellipse at center,rgba(60,40,80,.84),rgba(20,14,32,.97))}
+#dead{display:none;z-index:35;background:radial-gradient(ellipse at center,rgba(90,20,30,.8),rgba(20,8,16,.96))}
+.c{max-width:440px;text-align:center}
+.c h1{font-size:24px;margin:0 0 6px;color:#ffe6b0}
+.c p{font-size:14px;line-height:1.5;color:#e9ddf2;margin:6px 0}
+.c button{margin-top:14px;font:inherit;font-weight:700;font-size:16px;padding:12px 30px;border-radius:999px;border:0;background:#f6c36b;color:#3a2a14;cursor:pointer}
+#hint{position:fixed;left:50%;bottom:6px;transform:translateX(-50%);font-size:11px;color:rgba(255,255,255,.55);z-index:4;white-space:nowrap}
+</style></head><body>
+<canvas id="game"></canvas>
+<div id="quest" class="ui pill"><div class="t" id="qt"></div><div class="o" id="qo"></div><div class="p"><i id="qp"></i></div></div>
+<div id="bars" class="ui pill"><div class="bar"><i id="hpf"></i></div><div class="bar"><i id="stf"></i></div><div id="wpn"></div></div>
+<div id="coins" class="ui pill">₽ <span id="cn">0</span></div>
+<canvas id="mm"></canvas><div id="bsnd">♪</div>
+<div id="toast" class="ui"></div>
+<div id="joyBase" class="ui"><div id="joyKnob"></div></div>
+<div id="bfire" class="b">Огонь</div><div id="bact" class="b">Дейст&shy;вие</div>
+<div id="brel" class="b">↻</div><div id="bwp" class="b">Оружие</div><div id="bmed" class="b">+<span id="medn">0</span></div><div id="bspr" class="b">Бег</div>
+<div id="act" style="display:none"></div>
+<div id="hint" style="display:none">WASD — ходьба · клик мыши / J — огонь · E — действие · R — перезарядка · Q — оружие · H — аптечка · M — карта · Tab — задание</div>
+<div id="sl"><div class="sla"></div><div class="slb"></div><div class="slg"></div><div class="slt"></div><div class="sld"></div><div class="sls">Пропустить ›</div></div>
+<div id="dlg"><div class="n" id="dn"></div><div class="x" id="dx"></div><div class="m">нажмите, чтобы продолжить</div></div>
+<div id="dead"><div class="c"><h1>Вы погибли</h1><p>Огонь ещё горит. Вы очнётесь у Вечного огня и потеряете часть денег.</p><button id="rs">Возродиться</button></div></div>
+<div id="start"><div class="c">
+<h1>Последний огонь Дзержинска</h1>
+<p>Лёва Сомов возвращается в родной город за сестрой. Город мёртв, по дворам бродят ходячие, а военные обещают сжечь центр через две ночи.</p>
+<p>Мертвецы боятся огня и света и идут на шум. Держитесь костров.</p>
+<p>Выполняйте задания, ищите оружие, отбивайтесь от зомби. Левая половина экрана — джойстик, справа кнопки: «Огонь» (автонаведение), «Действие», перезарядка, смена оружия, аптечка.</p>
+<button id="go">Начать</button></div></div>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script>
+(function(){
+__JS__
+})();
+</script></body></html>
