@@ -3,6 +3,7 @@
 // systems (zombies, pickups, quests, projection) work unchanged; collision, background, light and map are swapped.
 const LEVELS = {mall: __MALL__, pool: __POOL__, cinema: __JV__};
 LEVELS.mall.outside = LEVELS.mall.outside || 'mall'; LEVELS.mall.enter = LEVELS.mall.enter || 'm_enter';
+const PIT_D = 5.0;                        // depth of the bowl, z-units
 let MOVER = null;                         // entity currently being moved (zombies may walk in the pit, the hero may not)
 let LEVEL = null;                         // null = city
 function lvW(L, gx, gy){ const X = gx + L.OX, Y = gy + L.OY; return [X*cb + Y*sb, -X*sb + Y*cb]; }   // grid -> world
@@ -13,7 +14,10 @@ function levelBlocked(x, y, r){
   const L = LEVEL, g = lvG(L, x, y), X = g[0], Y = g[1];
   if (X < 0.3 + r || Y < 0.3 + r || X > L.GW - 0.3 - r || Y > L.GH - 0.3 - r) return true;
   for (const b of L.rects){ if (b.id && L.off[b.id]) continue; if (X > b.x0 - r && X < b.x1 + r && Y > b.y0 - r && Y < b.y1 + r) return true; }
-  if (L.pit && !(MOVER && MOVER.T)){ const p = L.pit; if (X > p[0] - r*0.6 && X < p[2] + r*0.6 && Y > p[1] - r*0.6 && Y < p[3] + r*0.6) return true; }
+  if (L.pit){ const p = L.pit;
+    if (MOVER && MOVER.T){ if (MOVER.trapped && !(X > p[0] + 0.5 && X < p[2] - 0.5 && Y > p[1] + 0.5 && Y < p[3] - 0.5)) return true; }   // the bowl is too deep to climb out
+    else if (X > p[0] - r - 0.3 && X < p[2] + r + 0.3 && Y > p[1] - r - 0.3 && Y < p[3] + r + 0.3) return true;                          // nobody steps over the rim
+  }
   return false;
 }
 function levelFloor(x, y){ const L = LEVEL; if (!L) return null; const g = lvG(L, x, y);
@@ -34,11 +38,19 @@ function enterLevel(id, silent){
   const L = LEVELS[id]; if (!L || LEVEL === L) return;
   if (!L.bg.src) L.bg.src = 'lv/' + id + '.webp';
   const go = () => {
-    LEVEL = L; L.cityPos = [hero.x, hero.y]; document.body.classList.toggle('sneakable', !!L.pit); L.off = {}; L.flood = 0; L.flooding = false; L.beam = null;
+    LEVEL = L; L.cityPos = [hero.x, hero.y]; document.body.classList.toggle('sneakable', !!L.pit); L.off = {}; L.flood = 0; L.flooding = false; L.beam = null; L.valveOpen = {}; L.woke = false;
     zombies.length = 0; footprints.length = 0; fires.length = 0; bullets.length = 0; spits.length = 0;
     const p = POI[L.enter]; hero.x = p[0]; hero.y = p[1]; hero.vx = hero.vy = 0; hero.air = null;
     for (const s of L.spawns){ const w = lvW(L, s[0], s[1]); MOVER = {T: 1}; const q = freeNear(w[0], w[1], 0.5); MOVER = null; const z = makeZombie(s[2], q[0], q[1]); z.keep = true; z.alert = 0; z.still = Math.random() < 0.5;
-      if (L.pit && inPit(z.x, z.y)){ z.sleep = true; z.still = true; } }
+      if (L.pit && inPit(z.x, z.y)){ z.sleep = true; z.still = true; z.trapped = true; } }
+    if (L.pit){   // the bowl is packed with sleepers: flooding it is the whole point
+      const pp = L.pit, types = ['walker', 'walker', 'walker', 'walker', 'walker', 'runner', 'runner', 'brute', 'chemist'];
+      let seed = 7; const rnd = () => (seed = (seed*16807)%2147483647)/2147483647;
+      for (let n = 0; n < 40; n++){
+        const w = lvW(L, pp[0] + 1.5 + rnd()*(pp[2] - pp[0] - 3), pp[1] + 1.5 + rnd()*(pp[3] - pp[1] - 3)); MOVER = {T: 1}; const q = freeNear(w[0], w[1], 0.5); MOVER = null;
+        if (!inPit(q[0], q[1])) continue;
+        const z = makeZombie(types[Math.floor(rnd()*types.length)], q[0], q[1]); z.keep = true; z.alert = 0; z.sleep = true; z.still = true; z.trapped = true; }
+    }
     Quests.updateUI();
     toast(L.title || {mall: 'ТЦ «Дзержинец»', pool: 'Бассейн «Заря»', cinema: '«Жюль Верн»'}[id], 2.5);
   };
@@ -49,7 +61,7 @@ function leaveLevel(silent){
   if (!LEVEL) return;
   LEVEL_LAST = LEVEL;
   const go = () => {
-    LEVEL = null; document.body.classList.remove('sneakable'); if (hero.sneak) setSneak(false); zombies.length = 0; bullets.length = 0; spits.length = 0; fires.length = 0;
+    LEVEL = null; AUD.water(0); document.body.classList.remove('sneakable'); if (hero.sneak) setSneak(false); zombies.length = 0; bullets.length = 0; spits.length = 0; fires.length = 0;
     setTimeout(() => Quests.updateUI(), 0);
     const out = POI[LEVEL_LAST.outside]; const p = freeNear(out[0], out[1], 0.5); hero.x = p[0]; hero.y = p[1]; hero.vx = hero.vy = 0; hero.air = null; hero.lift = 0;
   };
@@ -100,9 +112,14 @@ function levelUpdate(dt){
   noiseT -= dt;
   if (L.pit && hero.moving && noiseT <= 0){ const sprint = (input.sprint || keys['shift']) && !hero.sneak; makeNoise(hero.x, hero.y, hero.sneak ? 1.3 : sprint ? 16 : 6.5); noiseT = 0.35; if (!hero.sneak) L.noiseFx = sprint ? 0.5 : 0.25; }
   if (L.noiseFx > 0) L.noiseFx -= dt;
-  // flooding the basin
-  if (L.flooding && L.flood < 1){ L.flood = Math.min(1, L.flood + dt/3.5);
-    if (L.flood > 0.45) for (const z of zombies){ if (!z.dead && z.hp > 0 && inPit(z.x, z.y)){ z.hp -= 160*dt; z.slowW = 1; if (z.hp <= 0) killZombie(z); } } }
+  // flooding the basin: each opened valve lets some water in, the last one opens the sluice
+  if (L.pit){
+    const opened = Object.values(L.valveOpen || {}).filter(Boolean).length, target = L.flooding ? 1 : opened*0.09;
+    if (L.flood < target) L.flood = Math.min(target, L.flood + dt/(L.flooding ? 9 : 14));
+    AUD.water(L.flood > 0 && L.flood < 1 ? 0.35 + 0.5*Math.min(1, opened/3) : 0);
+    if (L.flood > 0.55) for (const z of zombies){ if (!z.dead && z.hp > 0 && z.trapped){ z.hp -= (z.maxHp/2.2)*dt; z.slowW = 1; if (z.hp <= 0){ z.drown = true; killZombie(z); } } }
+    for (const z of zombies) z.lift = z.trapped ? PIT_D*ZS : 0;
+  }
   // projector beam
   if (L.beam){ const b = L.beam; b.t += dt; b.ang = b.base + Math.sin(b.t*0.9)*0.95;
     const o = lvW(L, L.beamAt[0], L.beamAt[1]);
@@ -129,12 +146,39 @@ function heroAir(dt){
 }
 function drawLevelOverlay(cx){
   const L = LEVEL; if (!L) return;
-  if (L.pit && L.flood > 0){   // water rising in the basin
-    const p = L.pit, dep = 1.6*(1 - L.flood), q = (gx, gy) => { const w = lvW(L, gx, gy); return P(w[0], w[1], -dep); };
-    cx.save(); cx.globalAlpha = 0.25 + 0.5*Math.min(1, L.flood*1.4); cx.fillStyle = '#3d86b8';
-    cx.beginPath(); [q(p[0], p[1]), q(p[2], p[1]), q(p[2], p[3]), q(p[0], p[3])].forEach((v, i) => i ? cx.lineTo(v[0], v[1]) : cx.moveTo(v[0], v[1])); cx.closePath(); cx.fill();
-    cx.globalAlpha = 0.25; cx.strokeStyle = '#cfe8ff'; cx.lineWidth = 1;
-    for (let i = 0; i < 14; i++){ const gx = p[0] + ((i*7.3 + time*2.2)%(p[2] - p[0])), gy = p[1] + (i*5.1%(p[3] - p[1])); const v = q(gx, gy); cx.beginPath(); cx.ellipse(v[0], v[1], 6, 2, 0, 0, TAU); cx.stroke(); }
+  if (L.pit && (L.flood > 0 || Object.values(L.valveOpen || {}).some(Boolean))){   // water in the bowl
+    const p = L.pit, q = (gx, gy, z) => { const w = lvW(L, gx, gy); return P(w[0], w[1], z); };
+    const lvl = -PIT_D*(1 - L.flood), fl = -PIT_D;
+    const rim = [[p[0], p[1]], [p[2], p[1]], [p[2], p[3]], [p[0], p[3]]];
+    cx.save(); cx.beginPath(); rim.forEach((v, i) => { const s = q(v[0], v[1], 0); i ? cx.lineTo(s[0], s[1]) : cx.moveTo(s[0], s[1]); }); cx.closePath(); cx.clip();
+    if (L.flood > 0.003){
+      const body = new Path2D(), poly = (arr) => { arr.forEach((s, i) => i ? body.lineTo(s[0], s[1]) : body.moveTo(s[0], s[1])); body.closePath(); };
+      poly(rim.map(v => q(v[0], v[1], lvl)));
+      for (let k = 0; k < 4; k++){ const a = rim[k], b = rim[(k + 1)%4]; poly([q(a[0], a[1], lvl), q(b[0], b[1], lvl), q(b[0], b[1], fl), q(a[0], a[1], fl)]); }
+      const top = q(p[0], p[1], 0), bot = q(p[2], p[3], fl);
+      const g = cx.createLinearGradient(0, top[1], 0, bot[1]); g.addColorStop(0, 'rgba(120,196,224,.82)'); g.addColorStop(1, 'rgba(26,86,128,.9)');
+      cx.fillStyle = g; cx.fill(body);
+      // surface: moving wave lines, glints and foam at the walls
+      cx.save(); const sp = rim.map(v => q(v[0], v[1], lvl)); cx.beginPath(); sp.forEach((s, i) => i ? cx.lineTo(s[0], s[1]) : cx.moveTo(s[0], s[1])); cx.closePath(); cx.clip();
+      cx.lineWidth = 1; cx.strokeStyle = 'rgba(220,244,255,.38)';
+      for (let i = 0; i < 26; i++){ const gy = p[1] + 0.9 + i*((p[3] - p[1] - 1.8)/25), a = q(p[0], gy, lvl), b = q(p[2], gy, lvl);
+        cx.beginPath(); for (let t = 0; t <= 24; t++){ const u = t/24, x = a[0] + (b[0] - a[0])*u, y = a[1] + (b[1] - a[1])*u + Math.sin(u*22 + time*2.6 + i*1.7)*(1.2 + (1 - L.flood)*0.8); t ? cx.lineTo(x, y) : cx.moveTo(x, y); } cx.stroke(); }
+      cx.fillStyle = 'rgba(255,255,255,.55)';
+      for (let i = 0; i < 40; i++){ if (Math.sin(time*3 + i*9.1) < 0.55) continue; const s = q(p[0] + ((i*13.7)%(p[2] - p[0])), p[1] + ((i*7.9)%(p[3] - p[1])), lvl); cx.fillRect(s[0], s[1], 2, 1); }
+      cx.restore();
+      cx.lineWidth = 2.4; cx.strokeStyle = 'rgba(255,255,255,.5)'; cx.setLineDash([5, 4]); cx.lineDashOffset = -time*14;
+      cx.beginPath(); rim.forEach((v, i) => { const s = q(v[0], v[1], lvl); i ? cx.lineTo(s[0], s[1]) : cx.moveTo(s[0], s[1]); }); cx.closePath(); cx.stroke(); cx.setLineDash([]);
+    }
+    // inflow from every opened valve: a pipe jet arcing into the bowl, a sheet down the wall, rings on the surface
+    for (const k in L.pois){ if (!L.valveOpen || !L.valveOpen[k] || k.slice(0, 3) !== 'p_v') continue;
+      const v = L.pois[k], tx = Math.max(p[0] + 0.4, Math.min(p[2] - 0.4, v[0])), ty = Math.max(p[1] + 0.4, Math.min(p[3] - 0.4, v[1]));
+      const ez = Math.max(lvl, fl + 0.2), a0 = q(v[0], v[1], 1.4), edge = q(tx, ty, 0), land = q(tx, ty, ez);
+      cx.strokeStyle = 'rgba(190,230,250,.75)'; cx.lineWidth = 3.2; cx.lineCap = 'round'; cx.beginPath(); cx.moveTo(edge[0], edge[1]); cx.lineTo(land[0], land[1]); cx.stroke();
+      cx.strokeStyle = 'rgba(255,255,255,.7)'; cx.lineWidth = 1.2; cx.setLineDash([6, 5]); cx.lineDashOffset = -time*60; cx.beginPath(); cx.moveTo(edge[0] + 1, edge[1]); cx.lineTo(land[0] + 1, land[1]); cx.stroke(); cx.setLineDash([]);
+      cx.fillStyle = 'rgba(235,248,255,.8)';
+      for (let n = 0; n < 7; n++){ const u = ((time*1.6 + n/7)%1), x = a0[0] + (edge[0] - a0[0])*u, y = a0[1] + (edge[1] - a0[1])*u - Math.sin(u*Math.PI)*9; cx.fillRect(x - 1, y - 1, 2.2, 2.2); }
+      for (let n = 0; n < 3; n++){ const u = (time*1.1 + n/3 + k.length*0.13)%1; cx.strokeStyle = 'rgba(230,246,255,' + (0.6*(1 - u)) + ')'; cx.lineWidth = 1.2; cx.beginPath(); cx.ellipse(land[0], land[1], 4 + u*20, 1.6 + u*8, 0, 0, TAU); cx.stroke(); }
+    }
     cx.restore();
   }
   if (L.noiseFx > 0){ const s = P(hero.x, hero.y, 0), r = (0.5 - L.noiseFx)*90 + 10; cx.save(); cx.globalAlpha = L.noiseFx*1.4; cx.strokeStyle = '#ffd0a0'; cx.lineWidth = 1.2; cx.beginPath(); cx.ellipse(s[0], s[1], r, r*0.5, 0, 0, TAU); cx.stroke(); cx.restore(); }

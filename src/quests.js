@@ -4,7 +4,7 @@ const POI = {
   libch: [-545, 334], gen: [-175, -585], tir: [-391, -606], dkh: [-964, -593], flame: [-1570, 22], kotel: [-1213, 70],
   bania: [-175, -20], libpu: [-1335, -219], trauma: [25, 152], magnit: [-68, 0], blood: [120, 151], pyat: [5, 422],
   park: [-300, -590], tracks: [-1450, 120],
-  mall: [-565, -600], pool: [-702, -690], cinema: [-651, -625], arch: [-527, -555], chapel: [-840, -570],
+  mall: [-565, -600], pool: [-690, -675], cinema: [-651, -625], arch: [-527, -555], chapel: [-840, -570],
   stadium: [-640, -765], block: [-905, -545]
 };
 const NPC_PAL = {
@@ -104,8 +104,8 @@ const CHAINS = [
       D1(L, 'Нет.'),
       D1('Серёгин', 'Тогда сам и выкручивайся.'),
       D1('Ася', 'Он стреляет в воздух! Они услышат!')], hide: ['major'], reward: {}},
-    {t: 'kill', n: 10, obj: 'Отбейтесь — выстрелы подняли весь квартал', zone: ['kotel', 70], spawn: ['kotel', 12, ['walker', 'runner', 'brute'], 30]},
-    {t: 'drive', who: 'asya', poi: 'kotel', car: [-40, -80], to: 'flame', r: 16, obj: 'За котельной «Нива» Леонтьича. Посадите Асю и гоните к Вечному огню', spawn: ['flame', 9, ['walker', 'runner', 'frost', 'walker'], 60], lines: [
+    {t: 'kill', n: 10, show: ['asya'], obj: 'Отбейтесь — выстрелы подняли весь квартал', zone: ['kotel', 70], spawn: ['kotel', 12, ['walker', 'runner', 'brute'], 30]},
+    {t: 'drive', who: 'asya', poi: 'kotel', car: [-40, -80], to: 'flame', r: 16, obj: 'За котельной «Нива» Леонтьича. Ася идёт за вами — садитесь в машину рядом с ней и гоните к Вечному огню', spawn: ['flame', 9, ['walker', 'runner', 'frost', 'walker'], 60], lines: [
       D1('Ася', 'Ты водишь, как папа. Он тоже по льду боком ездил.'),
       D1(L, 'Держись. Приехали — огонь горит.')]},
     {t: 'defend', poi: 'flame', r: 24, secs: 60, obj: 'Ночная атака! Удержите огонь', rate: 1.7, types: ['walker', 'runner', 'frost', 'brute', 'chemist'], onStart: 'flameOn'},
@@ -196,7 +196,7 @@ const Quests = (function(){
     if (s.t === 'beam'){ c.beamOn = false; }
     if (s.t === 'drive'){
       const b = pos(s.poi), cp = freeNear(b[0] + s.car[0], b[1] + s.car[1], 3.6); c.car = makeCar(cp[0], cp[1], Math.atan2(pos(s.to)[1] - cp[1], pos(s.to)[0] - cp[0]));
-      const n = npcs[s.who]; const p = freeNear(cp[0] + 2.5, cp[1] + 2.5, 0.5); n.x = p[0]; n.y = p[1]; n.follow = false; n.hidden = false; c.boarded = false;
+      const n = npcs[s.who]; const p = freeNear(hero.x + 1.8, hero.y + 1.8, 0.5); n.x = p[0]; n.y = p[1]; n.follow = true; n.hidden = false; n.hp = Math.max(n.hp, 100); c.boarded = false;   // Ася идёт за героем к машине
     }
     if (s.t === 'boss'){ const p = freeNear(...pos(s.poi), 1.2); const z = makeZombie('boss', p[0], p[1]); z.keep = true; z.questTag = c.def.id; c.boss = z; z.alert = 999; }
     if (s.onStart === 'flameOn') flameLit = true;
@@ -283,9 +283,9 @@ const Quests = (function(){
         const held = input.act || keys['e'] || keys['у'];
         for (const v of c.hold){ if (v.p >= 1) continue; const p = pos(v.k); v.near = Math.hypot(hero.x - p[0], hero.y - p[1]) < 2.2;
           if (v.near && held){ v.p = Math.min(1, v.p + dt/s.secs); if (Math.random() < dt*6) sfx('click'); if (v.p >= 1){ toast('Вентиль открыт (' + c.hold.filter(h => h.p >= 1).length + '/' + c.hold.length + ')'); haptic('medium'); updateUI(); } } }
-        c.prog = c.hold.filter(h => h.p >= 1).length;
-        if (c.prog >= c.hold.length && !c.doneHold){ c.doneHold = true; if (s.onDone === 'flood' && LEVEL){ LEVEL.flooding = true; toast('Вода хлынула в чашу!', 3); } c.t = 0; }
-        if (c.doneHold){ c.t += dt; if (c.t > 3.8) finishStep(c); }
+        c.prog = c.hold.filter(h => h.p >= 1).length; if (LEVEL){ LEVEL.valveOpen = LEVEL.valveOpen || {}; c.hold.forEach(h => { LEVEL.valveOpen[h.k] = h.p >= 1; }); }
+        if (c.prog >= c.hold.length && !c.doneHold){ c.doneHold = true; if (s.onDone === 'flood' && LEVEL){ LEVEL.flooding = true; toast('Шлюз открыт — чаша наполняется!', 4); } c.t = 0; }
+        if (c.doneHold){ c.t += dt; if (c.t > 10.5) finishStep(c); }
       } else if (s.t === 'beam'){
         if (c.beamOn){ c.t += dt; c.prog = Math.min(s.secs, c.t); c.spT = (c.spT || 0) - dt;
           if (c.spT <= 0 && zombies.length < 20 && LEVEL){ c.spT = s.rate; const doors = [[4, 46], [66, 46], [35, 49]], d = doors[Math.floor(Math.random()*3)], w = lvW(LEVEL, d[0], d[1]);

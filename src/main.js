@@ -67,9 +67,13 @@ function redrawSil(c, b){
 // ---------------------------------------------------------------- world dynamic drawables
 function drawSprite(c, o, time){
   const s = P(o.x, o.y, 0);
-  c.save(); c.translate(s[0], s[1] + (o.lift || 0)); c.scale(CU, CU);
+  c.save();
+  const sub = LEVEL && LEVEL.flood > 0.003 && o.trapped, wy = sub ? s[1] + PIT_D*ZS*(1 - LEVEL.flood) : 0;
+  if (sub){ c.beginPath(); c.rect(s[0] - 150, s[1] - 500, 300, wy - (s[1] - 500)); c.clip(); }   // submerged below the waterline
+  c.translate(s[0], s[1] + (o.lift || 0)); c.scale(CU, CU);
   if (o.draw) o.draw(c, 0, 0, time);
   c.restore();
+  if (sub){ c.save(); c.strokeStyle = 'rgba(225,244,255,.7)'; c.lineWidth = 1.2; c.beginPath(); c.ellipse(s[0], wy, 7 + Math.sin(time*5 + o.x)*1.2, 2.6, 0, 0, TAU); c.stroke(); c.restore(); }
 }
 function drawPickup(c, p, time){
   const s = P(p.x, p.y, 0), bob = Math.sin(time*4 + p.x)*1.2;
@@ -89,7 +93,7 @@ function drawQuestItem(c, it, time){
   c.restore();
 }
 const corpseDraw = (c, cp) => {
-  const s = P(cp.x, cp.y, 0); c.save(); c.translate(s[0], s[1]); c.globalAlpha = Math.max(0, 1 - cp.t/25);
+  const s = P(cp.x, cp.y, 0); c.save(); c.translate(s[0], s[1] + (cp.trapped ? PIT_D*ZS : 0)); c.globalAlpha = cp.trapped ? Math.max(0, 0.9 - (LEVEL ? LEVEL.flood : 0)*0.95) : Math.max(0, 1 - cp.t/25);
   if (pupReady('zomb') && cp.type){ c.scale(CU, CU); drawPuppet(c, 'zomb', cp.type, 5, pupView(cp.fx || 0.3, cp.fy || 0.6), ZOMB_H[cp.type] || 40, {noShadow: true}); c.restore(); return; }
   c.fillStyle = 'rgba(70,16,24,.45)'; c.beginPath(); c.ellipse(0, 0, 11*cp.T.u, 4.5*cp.T.u, 0, 0, TAU); c.fill();
   c.fillStyle = cp.pal.jacket; c.fillRect(-9*cp.T.u, -4*cp.T.u, 14*cp.T.u, 4*cp.T.u); c.fillStyle = cp.pal.skin; c.fillRect(5*cp.T.u, -4*cp.T.u, 4*cp.T.u, 4*cp.T.u);
@@ -124,6 +128,7 @@ function render(){
     cx.beginPath(); cx.ellipse(0.6, -0.8, 1.2, 0.3, 0, 0, TAU); cx.fill();
   }
   cx.restore();
+  drawCarTracks(cx);
   // dynamic drawables
   const items = [];
   const cs = [unrot(vx0 - 40, vy0 - 80), unrot(vx1 + 40, vy0 - 80), unrot(vx0 - 40, vy1 + 120), unrot(vx1 + 40, vy1 + 120)];
@@ -210,6 +215,7 @@ const MMT = __MMT__.map(t => { const im = new Image(); im.src = t[0]; return {im
 const mm = $('mm'), mmc = mm.getContext('2d');
 const OVS = __OVS__;     // [SMINX, SMINY, fullW(px of 0.2 overview), scale]
 function mmPos(x, y){ const s = P(x, y, 0); const sxu = -s[0]; const ox = (sxu - OVS[0] + 100)*0.2, oy = (s[1] - OVS[1] + 300)*0.2; return [OVS[2] - ox, oy]; }
+const MM_ST = __STREETS__;   // [name, x, y, dirx, diry]
 let bigMap = false;
 const MM_LAB = [['flame', 'Вечный огонь'], ['square', 'пл. Дзержинского'], ['dkh', 'ДКХ'], ['mall', 'Дзержинец', 1], ['stadium', 'стадион', 1], ['park', 'парк'], ['pool', 'бассейн', 1],
   ['spire', 'шпиль'], ['uvd', 'УВД'], ['trauma', 'травмпункт'], ['kotel', 'котельная'], ['admin', 'администрация', 1], ['tracks', 'ж/д', 1], ['cinema', 'Жюль Верн', 1]];
@@ -226,6 +232,16 @@ function drawMini(){
   c.font = '600 ' + Math.round((bigMap ? 10 : 8.5)*DPR) + 'px Georgia, serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
   if (!LEVEL) for (const L of MM_LAB){ const p = POI[L[0]]; if (!p || (bigMap && L[2])) continue; const q = toM(p[0], p[1]); if (q[0] < -40 || q[0] > R + 40 || q[1] < -10 || q[1] > R + 10) continue;
     c.lineWidth = 3*DPR; c.strokeStyle = 'rgba(28,20,40,.9)'; c.strokeText(L[1], q[0], q[1]); c.fillStyle = '#ffe2a0'; c.fillText(L[1], q[0], q[1]); }
+  if (!LEVEL){   // street names, set along the road
+    c.font = 'italic 600 ' + Math.round((bigMap ? 9.5 : 7.5)*DPR) + 'px Georgia, serif';
+    for (const S0 of MM_ST){
+      const q = toM(S0[1], S0[2]); if (q[0] < 8 || q[0] > R - 8 || q[1] < 8 || q[1] > R - 8) continue;
+      const q2 = toM(S0[1] + S0[3]*10, S0[2] + S0[4]*10); let an = Math.atan2(q2[1] - q[1], q2[0] - q[0]);
+      if (an > Math.PI/2) an -= Math.PI; else if (an < -Math.PI/2) an += Math.PI;
+      c.save(); c.translate(q[0], q[1]); c.rotate(an); c.lineWidth = 3*DPR; c.lineJoin = 'round'; c.strokeStyle = 'rgba(28,20,40,.85)'; c.strokeText(S0[0], 0, 0); c.fillStyle = '#d7e6ff'; c.fillText(S0[0], 0, 0); c.restore();
+    }
+    c.font = '600 ' + Math.round((bigMap ? 10 : 8.5)*DPR) + 'px Georgia, serif';
+  }
   Quests.targets().forEach(t => {
     const p = toM(t.x, t.y), col = t.main ? '#ffd36a' : '#9ad4ff', cxm = R/2, cym = R/2;
     const dx = p[0] - cxm, dy = p[1] - cym, dd = Math.hypot(dx, dy), rim = R/2 - 11*DPR;
@@ -359,7 +375,24 @@ function frame(ts){
   if (running){ render(); } if (running && (frame.n = (frame.n || 0) + 1)%3 === 0) drawMini();
   requestAnimationFrame(frame);
 }
+// ---- loading screen: the start button unlocks once the atlases and the tiles around the start point are in memory
+const goBtn = $('go'), ldBar = document.createElement('div');
+ldBar.innerHTML = '<i></i>'; ldBar.style.cssText = 'margin:16px auto 0;width:220px;height:6px;border-radius:3px;background:rgba(255,255,255,.18);overflow:hidden';
+ldBar.firstChild.style.cssText = 'display:block;height:100%;width:0;background:linear-gradient(90deg,#f6c36b,#ff9f4a);transition:width .25s';
+goBtn.parentNode.insertBefore(ldBar, goBtn); goBtn.disabled = true; goBtn.style.opacity = .55;
+let bootDone = false;
+function bootTick(){
+  const names = Object.keys(PUP.atlases); let ok = names.filter(pupReady).length;
+  const fl = POI.flame, hs = P(fl[0] + 14, fl[1] + 10, 0), ts = tilesIn(hs[0] - 700, hs[1] - 500, hs[0] + 700, hs[1] + 500, true);
+  const tOk = ts.filter(t => t.state === 2).length;
+  const p = (ok + tOk)/(names.length + Math.max(1, ts.length));
+  ldBar.firstChild.style.width = Math.round(p*100) + '%';
+  goBtn.textContent = p >= 1 ? 'Начать' : 'Загрузка ' + Math.round(p*100) + '%';
+  if (p >= 1){ bootDone = true; goBtn.disabled = false; goBtn.style.opacity = 1; ldBar.style.display = 'none'; } else setTimeout(bootTick, 120);
+}
+bootTick();
 $('go').addEventListener('click', () => {
+  if (!bootDone) return;
   $('start').style.display = 'none'; AUD.init(); running = true; init(); slidesOn = true; playSlides('intro', () => { toast('Идите на свет костров у Вечного огня', 4); for (const k in SCENES) preloadScene(k); });
   try { const w = window.Telegram.WebApp; w.ready(); w.expand(); if (w.disableVerticalSwipes) w.disableVerticalSwipes(); } catch (_) {}
 });

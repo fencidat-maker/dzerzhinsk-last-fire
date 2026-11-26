@@ -75,7 +75,43 @@ const AUD = (function(){
       m.g.gain.setTargetAtTime(want*(n === 'tension' ? 0.85 : 0.7), t, 1.6);
       if (!want && m.g.gain.value < 0.01 && !m.a.paused) m.a.pause(); }
   }
+  // ---- «Нива»: synthesised engine (gears), tyre hiss on snow, horn
+  let eng = null;
+  function engStart(){
+    if (!ctx || eng) return;
+    const o1 = ctx.createOscillator(), o2 = ctx.createOscillator(); o1.type = 'sawtooth'; o2.type = 'square';
+    const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 400; f.Q.value = 3;
+    const g = ctx.createGain(); g.gain.value = 0; o1.connect(f); o2.connect(f); f.connect(g); g.connect(sfxBus);
+    const nb = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate), d = nb.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random()*2 - 1;
+    const ns = ctx.createBufferSource(); ns.buffer = nb; ns.loop = true; const nf = ctx.createBiquadFilter(); nf.type = 'bandpass'; nf.frequency.value = 1500; nf.Q.value = 0.7;
+    const ng = ctx.createGain(); ng.gain.value = 0; ns.connect(nf); nf.connect(ng); ng.connect(sfxBus);
+    o1.start(); o2.start(); ns.start(); eng = {o1, o2, f, g, ng, nf, ns};
+  }
+  function engUpdate(spd01, thr, slide){
+    if (!ctx) return; if (!eng) engStart(); if (!eng) return; const t = ctx.currentTime;
+    const gear = Math.min(3, Math.floor(spd01*4)), fr = spd01*4 - gear, rpm = 42 + fr*58 + gear*6 + Math.abs(thr)*16;
+    eng.o1.frequency.setTargetAtTime(rpm, t, 0.06); eng.o2.frequency.setTargetAtTime(rpm*0.5, t, 0.06);
+    eng.f.frequency.setTargetAtTime(240 + spd01*650 + Math.abs(thr)*320, t, 0.1);
+    eng.g.gain.setTargetAtTime(0.11 + 0.11*Math.abs(thr) + 0.05*spd01, t, 0.1);
+    eng.ng.gain.setTargetAtTime(Math.min(0.2, slide*0.22 + spd01*0.035), t, 0.08);
+    eng.nf.frequency.setTargetAtTime(1100 + spd01*1300, t, 0.1);
+  }
+  function engStop(){ if (!eng) return; const t = ctx.currentTime, e = eng; eng = null; e.g.gain.setTargetAtTime(0, t, 0.08); e.ng.gain.setTargetAtTime(0, t, 0.08); setTimeout(() => { try { e.o1.stop(); e.o2.stop(); e.ns.stop(); } catch (_) {} }, 700); }
+  function horn(){
+    if (!ctx) return; const t = ctx.currentTime, g = ctx.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.22, t + 0.03); g.gain.setValueAtTime(0.22, t + 0.38); g.gain.linearRampToValueAtTime(0, t + 0.5);
+    [415, 520].forEach(fq => { const o = ctx.createOscillator(); o.type = 'square'; o.frequency.value = fq; const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 1800; o.connect(f); f.connect(g); o.start(t); o.stop(t + 0.52); });
+    g.connect(sfxBus);
+  }
+  function thud(v){ play('hit', Math.min(1, 0.4 + v*0.05), 0.6); }
+  let wat = null;
+  function water(v){
+    if (!ctx) return; if (!wat){ if (v <= 0) return;
+      const nb = ctx.createBuffer(1, ctx.sampleRate*2, ctx.sampleRate), d = nb.getChannelData(0); let b0 = 0; for (let i = 0; i < d.length; i++){ b0 = b0*0.97 + (Math.random()*2 - 1)*0.3; d[i] = b0; }
+      const s = ctx.createBufferSource(); s.buffer = nb; s.loop = true; const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 900; const g = ctx.createGain(); g.gain.value = 0;
+      s.connect(f); f.connect(g); g.connect(ambBus); s.start(); wat = {g, f}; }
+    wat.g.gain.setTargetAtTime(v*0.55, ctx.currentTime, 0.4); wat.f.frequency.setTargetAtTime(500 + v*900, ctx.currentTime, 0.4);
+  }
   function toggle(){ on = !on; try { localStorage.setItem('dz_snd', on ? '1' : '0'); } catch (_) {} if (master) master.gain.setTargetAtTime(on ? 1 : 0, ctx.currentTime, 0.1); return on; }
-  return {init, play, at, sfxKind, step, update, setMusic, toggle, get on(){ return on; }, dbg(){ return {loaded, n: Object.keys(buf).length, st: ctx && ctx.state, mus: musWant, th: mus.theme && !mus.theme.a.paused, fire: fireG && fireG.gain.value}; }};
+  return {init, play, at, sfxKind, step, update, setMusic, toggle, engUpdate, engStop, horn, thud, water, get on(){ return on; }, dbg(){ return {loaded, n: Object.keys(buf).length, st: ctx && ctx.state, mus: musWant, th: mus.theme && !mus.theme.a.paused, fire: fireG && fireG.gain.value}; }};
 })();
 ['pointerdown', 'keydown', 'touchstart'].forEach(ev => addEventListener(ev, () => AUD.init(), {capture: true, passive: true}));

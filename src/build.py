@@ -13,7 +13,7 @@ js=''
 for f in ('rt_core.js','col.js','audio.js','chars.js','game_rt.js','puppet.js','quests.js','level.js','car.js','slides.js','main.js','fx.js'):
     s=open(f).read()
     if f=='rt_core.js': s=s.replace('__WORLD__',wj)
-    if f=='main.js': s=s.replace('__TILES__',tiles).replace('__OVS__',ovs).replace('__MMT__',open('mm/tiles.json').read())
+    if f=='main.js': s=s.replace('__TILES__',tiles).replace('__OVS__',ovs).replace('__MMT__',open('mm/tiles.json').read()).replace('__STREETS__',open('streets.json').read())
     if f=='car.js': s=s.replace('__NIVA__',open('../car/niva.json').read())
     if f=='level.js': s=s.replace('__MALL__',open('../mall/mall.json').read()).replace('__POOL__',open('../lv/pool.json').read()).replace('__JV__',open('../lv/jv.json').read())
     if f=='fx.js': s=s.replace('__FIRES__',open('fires.json').read())

@@ -45,8 +45,8 @@ function stepTrack(e, ox, oy, stride){
     if (footprints.length > 500) footprints.splice(0, footprints.length - 500);
   }
 }
-function moveEntity(e, dx, dy, r){
-  MOVER = e;
+function moveEntity(e, dx, dy, r){ MOVER = e; try { return moveEntity0(e, dx, dy, r); } finally { MOVER = null; } }
+function moveEntity0(e, dx, dy, r){
   let nx = e.x + dx, ny = e.y + dy;
   if (!blocked(nx, ny, r)){ e.x = nx; e.y = ny; return true; }
   if (!blocked(nx, e.y, r)){ e.x = nx; return true; }
@@ -198,7 +198,8 @@ function killZombie(z, idx){
   const i = idx != null ? idx : zombies.indexOf(z); if (i < 0) return;
   zombies.splice(i, 1); S.kills++; AUD.at('zdie', z.x, z.y, 0.75, 30, z.type === 'brute' || z.type === 'boss' ? 0.8 : 1);
   spawnPart(z.x, z.y, 1.2, z.type === 'chemist' ? '#9bd44a' : '#8a1f2a', 14, 5, 0.7);
-  corpses.push({x: z.x, y: z.y, pal: z.pal, T: z.T, t: 0, dir: z.dir, type: z.type, fx: z.fx, fy: z.fy});
+  corpses.push({x: z.x, y: z.y, pal: z.pal, T: z.T, t: 0, dir: z.dir, type: z.type, fx: z.fx, fy: z.fy, trapped: z.trapped});
+  if (z.drown) return;
   if (corpses.length > 40) corpses.shift();
   const r = Math.random();
   if (r < 0.11) pickups.push({x: z.x, y: z.y, kind: 'ammo', t: 0}); else if (r < 0.17) pickups.push({x: z.x, y: z.y, kind: 'med', t: 0}); else if (r < 0.55) pickups.push({x: z.x, y: z.y, kind: 'coin', v: z.T.coin, t: 0});
