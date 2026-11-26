@@ -49,7 +49,7 @@ function moveEntity(e, dx, dy, r){
   if (!blocked(e.x, ny, r)){ e.y = ny; return true; }
   const l = Math.hypot(dx, dy) || 1;
   for (const a of [0.6, -0.6, 1.2, -1.2]){ const ca = Math.cos(a), sa = Math.sin(a); const rx = e.x + (dx*ca - dy*sa), ry = e.y + (dx*sa + dy*ca); if (!blocked(rx, ry, r)){ e.x = rx; e.y = ry; return true; } }
-  if (colMask(e.x, e.y, r*0.5)){ e.x = nx; e.y = ny; return true; }   // stuck inside a painted prop: let it walk out
+  if (colAtP(...P(e.x, e.y, 0)) && !colAtP(...P(nx, ny, 0)) || colAtP(...P(e.x, e.y, 0)) && colDepth(e.x, e.y) > colDepth(nx, ny)){ e.x = nx; e.y = ny; return true; }   // stuck inside a painted prop: let it walk out
   return false;
 }
 

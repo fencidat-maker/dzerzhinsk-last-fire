@@ -30,3 +30,5 @@ function colMask(x, y, r){
   for (let a = 0; a < 4; a++){ const q = P(x + Math.cos(a*1.5708)*rr, y + Math.sin(a*1.5708)*rr, 0); if (colAtP(q[0], q[1])) return true; }
   return false;
 }
+// how deep a point sits inside a prop (count of masked samples around it) - lets a stuck entity only move outward
+function colDepth(x, y){ let n = 0; for (let a = 0; a < 8; a++){ const q = P(x + Math.cos(a*0.785)*1.2, y + Math.sin(a*0.785)*1.2, 0); if (colAtP(q[0], q[1])) n++; } return n; }
