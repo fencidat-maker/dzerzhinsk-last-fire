@@ -34,6 +34,8 @@ html,body{margin:0;height:100%;background:#1c1828;overflow:hidden;touch-action:n
 #brel{right:calc(max(14px,env(safe-area-inset-right)) + 120px);bottom:calc(max(24px,env(safe-area-inset-bottom)) + 100px);width:52px;height:52px;font-size:22px}
 #bwp{right:max(14px,env(safe-area-inset-right));bottom:calc(max(24px,env(safe-area-inset-bottom)) + 104px);width:52px;height:52px;font-size:11px}
 #bmed{right:calc(max(14px,env(safe-area-inset-right)) + 60px);bottom:calc(max(24px,env(safe-area-inset-bottom)) + 104px);width:52px;height:52px;font-size:12px}
+#bmed{padding:0}#bmed span{position:absolute;right:-3px;top:-3px;min-width:18px;height:18px;border-radius:9px;background:#d22f2f;color:#fff;font:700 11px/18px system-ui;text-align:center;border:2px solid rgba(255,255,255,.8)}#bmed.empty svg{opacity:.35}#bmed.empty span{background:#555}
+#bsnk{left:max(14px,env(safe-area-inset-left));bottom:calc(max(24px,env(safe-area-inset-bottom)) + 68px);width:56px;height:56px;font-size:11px;display:none}body.sneakable #bsnk{display:flex}#bsnk.on{background:rgba(70,110,170,.85);border-color:#bfe0ff}
 #bspr{left:max(14px,env(safe-area-inset-left));bottom:max(24px,env(safe-area-inset-bottom));width:56px;height:56px;font-size:11px}
 #bspr.on{background:rgba(246,195,107,.8);color:#3a2a14}
 #medn{margin-left:3px;font-size:11px}
@@ -68,7 +70,7 @@ html,body{margin:0;height:100%;background:#1c1828;overflow:hidden;touch-action:n
 <div id="toast" class="ui"></div>
 <div id="joyBase" class="ui"><div id="joyKnob"></div></div>
 <div id="bfire" class="b">Огонь</div><div id="bact" class="b">Дейст&shy;вие</div>
-<div id="brel" class="b">↻</div><div id="bwp" class="b">Оружие</div><div id="bmed" class="b">+<span id="medn">0</span></div><div id="bspr" class="b">Бег</div>
+<div id="brel" class="b">↻</div><div id="bwp" class="b">Оружие</div><div id="bmed" class="b"><svg viewBox="0 0 24 24" width="26" height="26"><rect x="2.5" y="2.5" width="19" height="19" rx="4" fill="#f4efe6"/><rect x="10" y="5.5" width="4" height="13" rx="1" fill="#d22f2f"/><rect x="5.5" y="10" width="13" height="4" rx="1" fill="#d22f2f"/></svg><span id="medn">0</span></div><div id="bsnk" class="b">Тихо</div><div id="bspr" class="b">Бег</div>
 <div id="act" style="display:none"></div>
 <div id="hint" style="display:none">WASD — ходьба · клик мыши / J — огонь · E — действие · R — перезарядка · Q — оружие · H — аптечка · M — карта · Tab — задание</div>
 <div id="fade" style="position:fixed;inset:0;background:#07050c;opacity:0;pointer-events:none;transition:opacity .45s;z-index:35"></div>

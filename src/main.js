@@ -259,7 +259,7 @@ function hud(){
   elHp.style.width = Math.max(0, S.hp/S.maxHp*100) + '%'; elCn.textContent = S.coins;
   const w = curW(); let t = w.name;
   if (w.mag) t += ' · ' + (S.mag[S.cur] || 0) + '/' + S.ammo[w.ammo]; else if (w.throw) t += ' · ' + S.ammo['мол'];
-  elWp.textContent = t; $('medn').textContent = S.med;
+  elWp.textContent = t; $('medn').textContent = S.med; $('bmed').classList.toggle('empty', !S.med);
   elHp.style.background = S.hp < 30 ? '#e04a4a' : '#7bd96a';
 }
 let dlgLines = null, dlgIdx = 0, dlgCb = null;
@@ -287,6 +287,7 @@ addEventListener('keydown', e => { if (slidesOn){ if (e.key === 'Escape') docume
   if ([' ', 'enter', 'e', 'у'].includes(k)){ e.preventDefault(); keys[k] = true; if (!e.repeat) interact(); return; }
   if (k === 'r' || k === 'к') startReload(); if (k === 'q' || k === 'й') switchWeapon(1); if (k === 'h' || k === 'р') useMed(); if (k === 'm' || k === 'ь'){ bigMap = !bigMap; mm.classList.toggle('big', bigMap); }
   if (k === 'tab'){ e.preventDefault(); Quests.cycle(); }
+  if ((k === 'c' || k === 'с') && LEVEL && LEVEL.pit) setSneak(!hero.sneak);
   keys[k] = true;
 });
 addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
@@ -318,7 +319,9 @@ hold($('bact'), () => { input.act = true; interact(); }, () => { input.act = fal
 $('brel').addEventListener('pointerdown', e => { e.stopPropagation(); startReload(); });
 $('bwp').addEventListener('pointerdown', e => { e.stopPropagation(); switchWeapon(1); });
 $('bmed').addEventListener('pointerdown', e => { e.stopPropagation(); useMed(); });
-$('bspr').addEventListener('pointerdown', e => { e.stopPropagation(); input.sprint = !input.sprint; $('bspr').classList.toggle('on', input.sprint); });
+$('bspr').addEventListener('pointerdown', e => { e.stopPropagation(); input.sprint = !input.sprint; $('bspr').classList.toggle('on', input.sprint); if (input.sprint && hero.sneak){ hero.sneak = false; $('bsnk').classList.remove('on'); } });
+$('bsnk').addEventListener('pointerdown', e => { e.stopPropagation(); setSneak(!hero.sneak); });
+function setSneak(on){ hero.sneak = on; $('bsnk').classList.toggle('on', on); if (on){ input.sprint = false; $('bspr').classList.remove('on'); toast('Тихий шаг: медленно, но бесшумно', 1.6); } }
 { const b = $('bsnd'); b.classList.toggle('off', !AUD.on); b.addEventListener('pointerdown', e => { e.stopPropagation(); AUD.init(); b.classList.toggle('off', !AUD.toggle()); }); }
 $('quest').addEventListener('pointerdown', e => { e.stopPropagation(); Quests.cycle(); });
 document.addEventListener('contextmenu', e => e.preventDefault());

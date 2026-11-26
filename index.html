@@ -34,6 +34,8 @@ html,body{margin:0;height:100%;background:#1c1828;overflow:hidden;touch-action:n
 #brel{right:calc(max(14px,env(safe-area-inset-right)) + 120px);bottom:calc(max(24px,env(safe-area-inset-bottom)) + 100px);width:52px;height:52px;font-size:22px}
 #bwp{right:max(14px,env(safe-area-inset-right));bottom:calc(max(24px,env(safe-area-inset-bottom)) + 104px);width:52px;height:52px;font-size:11px}
 #bmed{right:calc(max(14px,env(safe-area-inset-right)) + 60px);bottom:calc(max(24px,env(safe-area-inset-bottom)) + 104px);width:52px;height:52px;font-size:12px}
+#bmed{padding:0}#bmed span{position:absolute;right:-3px;top:-3px;min-width:18px;height:18px;border-radius:9px;background:#d22f2f;color:#fff;font:700 11px/18px system-ui;text-align:center;border:2px solid rgba(255,255,255,.8)}#bmed.empty svg{opacity:.35}#bmed.empty span{background:#555}
+#bsnk{left:max(14px,env(safe-area-inset-left));bottom:calc(max(24px,env(safe-area-inset-bottom)) + 68px);width:56px;height:56px;font-size:11px;display:none}body.sneakable #bsnk{display:flex}#bsnk.on{background:rgba(70,110,170,.85);border-color:#bfe0ff}
 #bspr{left:max(14px,env(safe-area-inset-left));bottom:max(24px,env(safe-area-inset-bottom));width:56px;height:56px;font-size:11px}
 #bspr.on{background:rgba(246,195,107,.8);color:#3a2a14}
 #medn{margin-left:3px;font-size:11px}
@@ -68,7 +70,7 @@ html,body{margin:0;height:100%;background:#1c1828;overflow:hidden;touch-action:n
 <div id="toast" class="ui"></div>
 <div id="joyBase" class="ui"><div id="joyKnob"></div></div>
 <div id="bfire" class="b">Огонь</div><div id="bact" class="b">Дейст&shy;вие</div>
-<div id="brel" class="b">↻</div><div id="bwp" class="b">Оружие</div><div id="bmed" class="b">+<span id="medn">0</span></div><div id="bspr" class="b">Бег</div>
+<div id="brel" class="b">↻</div><div id="bwp" class="b">Оружие</div><div id="bmed" class="b"><svg viewBox="0 0 24 24" width="26" height="26"><rect x="2.5" y="2.5" width="19" height="19" rx="4" fill="#f4efe6"/><rect x="10" y="5.5" width="4" height="13" rx="1" fill="#d22f2f"/><rect x="5.5" y="10" width="13" height="4" rx="1" fill="#d22f2f"/></svg><span id="medn">0</span></div><div id="bsnk" class="b">Тихо</div><div id="bspr" class="b">Бег</div>
 <div id="act" style="display:none"></div>
 <div id="hint" style="display:none">WASD — ходьба · клик мыши / J — огонь · E — действие · R — перезарядка · Q — оружие · H — аптечка · M — карта · Tab — задание</div>
 <div id="fade" style="position:fixed;inset:0;background:#07050c;opacity:0;pointer-events:none;transition:opacity .45s;z-index:35"></div>
@@ -282,7 +284,7 @@ const AUD = (function(){
     return false;
   }
   let stepN = 0, moanT = 3, lastFp = 0;
-  function step(vol = 0.45){ if (!loaded) return; stepN = (stepN + 1 + Math.floor(Math.random()*4))%6; play('step' + stepN, vol, rnd(0.9, 1.1)); }
+  function step(vol = 0.2, pan = 0){ if (!loaded) return; stepN = (stepN + 1 + Math.floor(Math.random()*4))%6; play('step' + stepN, vol*rnd(0.85, 1), rnd(0.94, 1.04), pan); }
   function setMusic(name){ musWant = name; }
   function update(dt){
     if (!ctx || !loaded) return;
@@ -427,7 +429,7 @@ function stepTrack(e, ox, oy, stride){
   const dx = e.x - ox, dy = e.y - oy, d = Math.hypot(dx, dy); if (d < 1e-4) return;
   const a = P(e.x, e.y, 0), b = P(ox, oy, 0); e.walkPx = (e.walkPx || 0) + Math.hypot(a[0] - b[0], a[1] - b[1]);
   e.fpD = (e.fpD || 0) + d;
-  if (e.fpD > stride){ e.fpD = 0; e.fpSide = -(e.fpSide || 1); if (e === hero) AUD.step(0.5); else if (e.T && (e.type === 'brute' || e.type === 'boss')) AUD.at('step' + ((Math.random()*6)|0), e.x, e.y, 0.55, 16, 0.7);
+  if (e.fpD > stride){ e.fpD = 0; e.fpSide = -(e.fpSide || 1); if (e === hero) {} else if (e.T && (e.type === 'brute' || e.type === 'boss')) AUD.at('step' + ((Math.random()*6)|0), e.x, e.y, 0.3, 16, 0.72);
     const nx = -dy/d, ny = dx/d, o = 0.42*e.fpSide;
     if (!LEVEL) footprints.push({x: e.x + nx*o, y: e.y + ny*o, dx: dx/d, dy: dy/d, t: 0});
     if (footprints.length > 500) footprints.splice(0, footprints.length - 500);
@@ -730,13 +732,15 @@ function updateHero(dt){
   if (hero.air){ heroAir(dt); hero.depth = depthOf(hero.x, hero.y); return; }
   if (!S.dead && !uiBlock() && mag > 0.06){
     const g = unrot(ix, iy), gl = Math.hypot(g[0], g[1]) || 1, gx = g[0]/gl, gy = g[1]/gl;
-    const sprint = (input.sprint || keys['shift']) && S.stamina > 2;
-    let sp = (sprint ? 13.5 : 9.0)*mag*SPD_S; if (S.slow > 0) sp *= 0.55; if (LEVEL && levelFloor(hero.x, hero.y) === 'balls') sp *= 0.42;
+    const sprint = (input.sprint || keys['shift']) && S.stamina > 2 && !hero.sneak;
+    let sp = (sprint ? 13.5 : 9.0)*mag*SPD_S; if (S.slow > 0) sp *= 0.55; if (LEVEL && levelFloor(hero.x, hero.y) === 'balls') sp *= 0.42; if (hero.sneak) sp *= 0.5;
     { const a = P(gx, gy, 0), b = P(0, 0, 0); sp *= Math.min(2.1, SCREEN_REF/Math.max(0.001, Math.hypot(a[0] - b[0], a[1] - b[1]))); }
     if (sprint){ S.stamina = Math.max(0, S.stamina - 22*dt); }
     const ox = hero.x, oy = hero.y;
     if (moveEntity(hero, gx*sp*dt + hero.vx*dt, gy*sp*dt + hero.vy*dt, 0.45)) hero.moving = true;
     stepTrack(hero, ox, oy, 1.6);
+    { const ph = Math.floor((hero.walkPx || 0)/(HERO_H*CHS*STRIDE)*2); if (ph !== hero.stepPh){ hero.stepPh = ph; const tnow = performance.now();
+        if (!hero.lastStep || tnow - hero.lastStep > 240){ hero.lastStep = tnow; AUD.step(hero.sneak ? 0.07 : sprint ? 0.24 : 0.16, (ph%2) ? 0.15 : -0.15); } } }
     hero.step += dt*(sprint ? 14 : 10.5)*mag;
     hero.dir = Math.abs(ix) > Math.abs(iy)*0.9 ? (ix > 0 ? 'r' : 'l') : (iy > 0 ? 'd' : 'u');
     hero.aim = Math.atan2(gy, gx); hero.face = hero.aim;
@@ -1256,7 +1260,7 @@ function enterLevel(id, silent){
   const L = LEVELS[id]; if (!L || LEVEL === L) return;
   if (!L.bg.src) L.bg.src = 'lv/' + id + '.webp';
   const go = () => {
-    LEVEL = L; L.cityPos = [hero.x, hero.y]; L.off = {}; L.flood = 0; L.flooding = false; L.beam = null;
+    LEVEL = L; L.cityPos = [hero.x, hero.y]; document.body.classList.toggle('sneakable', !!L.pit); L.off = {}; L.flood = 0; L.flooding = false; L.beam = null;
     zombies.length = 0; footprints.length = 0; fires.length = 0; bullets.length = 0; spits.length = 0;
     const p = POI[L.enter]; hero.x = p[0]; hero.y = p[1]; hero.vx = hero.vy = 0; hero.air = null;
     for (const s of L.spawns){ const w = lvW(L, s[0], s[1]); MOVER = {T: 1}; const q = freeNear(w[0], w[1], 0.5); MOVER = null; const z = makeZombie(s[2], q[0], q[1]); z.keep = true; z.alert = 0; z.still = Math.random() < 0.5;
@@ -1270,7 +1274,7 @@ function leaveLevel(silent){
   if (!LEVEL) return;
   LEVEL_LAST = LEVEL;
   const go = () => {
-    LEVEL = null; zombies.length = 0; bullets.length = 0; spits.length = 0; fires.length = 0;
+    LEVEL = null; document.body.classList.remove('sneakable'); if (hero.sneak) setSneak(false); zombies.length = 0; bullets.length = 0; spits.length = 0; fires.length = 0;
     const out = POI[LEVEL_LAST.outside]; const p = freeNear(out[0], out[1], 0.5); hero.x = p[0]; hero.y = p[1]; hero.vx = hero.vy = 0; hero.air = null; hero.lift = 0;
   };
   silent ? go() : fadeScreen(go);
@@ -1318,7 +1322,7 @@ function levelUpdate(dt){
   const L = LEVEL; if (!L) return;
   // hero noise
   noiseT -= dt;
-  if (L.pit && hero.moving && noiseT <= 0){ const sprint = (input.sprint || keys['shift']); makeNoise(hero.x, hero.y, sprint ? 16 : 3.2); noiseT = 0.35; if (sprint) L.noiseFx = 0.5; }
+  if (L.pit && hero.moving && noiseT <= 0){ const sprint = (input.sprint || keys['shift']) && !hero.sneak; makeNoise(hero.x, hero.y, hero.sneak ? 1.3 : sprint ? 16 : 6.5); noiseT = 0.35; if (!hero.sneak) L.noiseFx = sprint ? 0.5 : 0.25; }
   if (L.noiseFx > 0) L.noiseFx -= dt;
   // flooding the basin
   if (L.flooding && L.flood < 1){ L.flood = Math.min(1, L.flood + dt/3.5);
@@ -1345,7 +1349,7 @@ function heroAir(dt){
   const a = hero.air; a.t += dt; const k = Math.min(1, a.t/a.dur);
   hero.x = a.x0 + (a.x1 - a.x0)*k; hero.y = a.y0 + (a.y1 - a.y0)*k; hero.lift = -Math.sin(k*Math.PI)*a.h*ZS; hero.iframe = 0.1;
   hero.moving = true; hero.walkPx = (hero.walkPx || 0) + 0;
-  if (k >= 1){ hero.air = null; hero.lift = 0; hero.trampCD = 0.45; if (blocked(hero.x, hero.y, 0.45)){ const p = freeNear(hero.x, hero.y, 0.45); hero.x = p[0]; hero.y = p[1]; } AUD.step(0.9); }
+  if (k >= 1){ hero.air = null; hero.lift = 0; hero.trampCD = 0.45; if (blocked(hero.x, hero.y, 0.45)){ const p = freeNear(hero.x, hero.y, 0.45); hero.x = p[0]; hero.y = p[1]; } AUD.step(0.35); }
 }
 function drawLevelOverlay(cx){
   const L = LEVEL; if (!L) return;
@@ -1834,7 +1838,7 @@ function hud(){
   elHp.style.width = Math.max(0, S.hp/S.maxHp*100) + '%'; elCn.textContent = S.coins;
   const w = curW(); let t = w.name;
   if (w.mag) t += ' · ' + (S.mag[S.cur] || 0) + '/' + S.ammo[w.ammo]; else if (w.throw) t += ' · ' + S.ammo['мол'];
-  elWp.textContent = t; $('medn').textContent = S.med;
+  elWp.textContent = t; $('medn').textContent = S.med; $('bmed').classList.toggle('empty', !S.med);
   elHp.style.background = S.hp < 30 ? '#e04a4a' : '#7bd96a';
 }
 let dlgLines = null, dlgIdx = 0, dlgCb = null;
@@ -1862,6 +1866,7 @@ addEventListener('keydown', e => { if (slidesOn){ if (e.key === 'Escape') docume
   if ([' ', 'enter', 'e', 'у'].includes(k)){ e.preventDefault(); keys[k] = true; if (!e.repeat) interact(); return; }
   if (k === 'r' || k === 'к') startReload(); if (k === 'q' || k === 'й') switchWeapon(1); if (k === 'h' || k === 'р') useMed(); if (k === 'm' || k === 'ь'){ bigMap = !bigMap; mm.classList.toggle('big', bigMap); }
   if (k === 'tab'){ e.preventDefault(); Quests.cycle(); }
+  if ((k === 'c' || k === 'с') && LEVEL && LEVEL.pit) setSneak(!hero.sneak);
   keys[k] = true;
 });
 addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
@@ -1893,7 +1898,9 @@ hold($('bact'), () => { input.act = true; interact(); }, () => { input.act = fal
 $('brel').addEventListener('pointerdown', e => { e.stopPropagation(); startReload(); });
 $('bwp').addEventListener('pointerdown', e => { e.stopPropagation(); switchWeapon(1); });
 $('bmed').addEventListener('pointerdown', e => { e.stopPropagation(); useMed(); });
-$('bspr').addEventListener('pointerdown', e => { e.stopPropagation(); input.sprint = !input.sprint; $('bspr').classList.toggle('on', input.sprint); });
+$('bspr').addEventListener('pointerdown', e => { e.stopPropagation(); input.sprint = !input.sprint; $('bspr').classList.toggle('on', input.sprint); if (input.sprint && hero.sneak){ hero.sneak = false; $('bsnk').classList.remove('on'); } });
+$('bsnk').addEventListener('pointerdown', e => { e.stopPropagation(); setSneak(!hero.sneak); });
+function setSneak(on){ hero.sneak = on; $('bsnk').classList.toggle('on', on); if (on){ input.sprint = false; $('bspr').classList.remove('on'); toast('Тихий шаг: медленно, но бесшумно', 1.6); } }
 { const b = $('bsnd'); b.classList.toggle('off', !AUD.on); b.addEventListener('pointerdown', e => { e.stopPropagation(); AUD.init(); b.classList.toggle('off', !AUD.toggle()); }); }
 $('quest').addEventListener('pointerdown', e => { e.stopPropagation(); Quests.cycle(); });
 document.addEventListener('contextmenu', e => e.preventDefault());

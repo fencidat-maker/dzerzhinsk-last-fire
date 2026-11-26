@@ -34,7 +34,7 @@ function enterLevel(id, silent){
   const L = LEVELS[id]; if (!L || LEVEL === L) return;
   if (!L.bg.src) L.bg.src = 'lv/' + id + '.webp';
   const go = () => {
-    LEVEL = L; L.cityPos = [hero.x, hero.y]; L.off = {}; L.flood = 0; L.flooding = false; L.beam = null;
+    LEVEL = L; L.cityPos = [hero.x, hero.y]; document.body.classList.toggle('sneakable', !!L.pit); L.off = {}; L.flood = 0; L.flooding = false; L.beam = null;
     zombies.length = 0; footprints.length = 0; fires.length = 0; bullets.length = 0; spits.length = 0;
     const p = POI[L.enter]; hero.x = p[0]; hero.y = p[1]; hero.vx = hero.vy = 0; hero.air = null;
     for (const s of L.spawns){ const w = lvW(L, s[0], s[1]); MOVER = {T: 1}; const q = freeNear(w[0], w[1], 0.5); MOVER = null; const z = makeZombie(s[2], q[0], q[1]); z.keep = true; z.alert = 0; z.still = Math.random() < 0.5;
@@ -48,7 +48,7 @@ function leaveLevel(silent){
   if (!LEVEL) return;
   LEVEL_LAST = LEVEL;
   const go = () => {
-    LEVEL = null; zombies.length = 0; bullets.length = 0; spits.length = 0; fires.length = 0;
+    LEVEL = null; document.body.classList.remove('sneakable'); if (hero.sneak) setSneak(false); zombies.length = 0; bullets.length = 0; spits.length = 0; fires.length = 0;
     const out = POI[LEVEL_LAST.outside]; const p = freeNear(out[0], out[1], 0.5); hero.x = p[0]; hero.y = p[1]; hero.vx = hero.vy = 0; hero.air = null; hero.lift = 0;
   };
   silent ? go() : fadeScreen(go);
@@ -96,7 +96,7 @@ function levelUpdate(dt){
   const L = LEVEL; if (!L) return;
   // hero noise
   noiseT -= dt;
-  if (L.pit && hero.moving && noiseT <= 0){ const sprint = (input.sprint || keys['shift']); makeNoise(hero.x, hero.y, sprint ? 16 : 3.2); noiseT = 0.35; if (sprint) L.noiseFx = 0.5; }
+  if (L.pit && hero.moving && noiseT <= 0){ const sprint = (input.sprint || keys['shift']) && !hero.sneak; makeNoise(hero.x, hero.y, hero.sneak ? 1.3 : sprint ? 16 : 6.5); noiseT = 0.35; if (!hero.sneak) L.noiseFx = sprint ? 0.5 : 0.25; }
   if (L.noiseFx > 0) L.noiseFx -= dt;
   // flooding the basin
   if (L.flooding && L.flood < 1){ L.flood = Math.min(1, L.flood + dt/3.5);
@@ -123,7 +123,7 @@ function heroAir(dt){
   const a = hero.air; a.t += dt; const k = Math.min(1, a.t/a.dur);
   hero.x = a.x0 + (a.x1 - a.x0)*k; hero.y = a.y0 + (a.y1 - a.y0)*k; hero.lift = -Math.sin(k*Math.PI)*a.h*ZS; hero.iframe = 0.1;
   hero.moving = true; hero.walkPx = (hero.walkPx || 0) + 0;
-  if (k >= 1){ hero.air = null; hero.lift = 0; hero.trampCD = 0.45; if (blocked(hero.x, hero.y, 0.45)){ const p = freeNear(hero.x, hero.y, 0.45); hero.x = p[0]; hero.y = p[1]; } AUD.step(0.9); }
+  if (k >= 1){ hero.air = null; hero.lift = 0; hero.trampCD = 0.45; if (blocked(hero.x, hero.y, 0.45)){ const p = freeNear(hero.x, hero.y, 0.45); hero.x = p[0]; hero.y = p[1]; } AUD.step(0.35); }
 }
 function drawLevelOverlay(cx){
   const L = LEVEL; if (!L) return;

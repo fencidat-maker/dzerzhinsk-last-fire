@@ -50,7 +50,7 @@ const AUD = (function(){
     return false;
   }
   let stepN = 0, moanT = 3, lastFp = 0;
-  function step(vol = 0.45){ if (!loaded) return; stepN = (stepN + 1 + Math.floor(Math.random()*4))%6; play('step' + stepN, vol, rnd(0.9, 1.1)); }
+  function step(vol = 0.2, pan = 0){ if (!loaded) return; stepN = (stepN + 1 + Math.floor(Math.random()*4))%6; play('step' + stepN, vol*rnd(0.85, 1), rnd(0.94, 1.04), pan); }
   function setMusic(name){ musWant = name; }
   function update(dt){
     if (!ctx || !loaded) return;

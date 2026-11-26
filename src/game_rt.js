@@ -39,7 +39,7 @@ function stepTrack(e, ox, oy, stride){
   const dx = e.x - ox, dy = e.y - oy, d = Math.hypot(dx, dy); if (d < 1e-4) return;
   const a = P(e.x, e.y, 0), b = P(ox, oy, 0); e.walkPx = (e.walkPx || 0) + Math.hypot(a[0] - b[0], a[1] - b[1]);
   e.fpD = (e.fpD || 0) + d;
-  if (e.fpD > stride){ e.fpD = 0; e.fpSide = -(e.fpSide || 1); if (e === hero) AUD.step(0.5); else if (e.T && (e.type === 'brute' || e.type === 'boss')) AUD.at('step' + ((Math.random()*6)|0), e.x, e.y, 0.55, 16, 0.7);
+  if (e.fpD > stride){ e.fpD = 0; e.fpSide = -(e.fpSide || 1); if (e === hero) {} else if (e.T && (e.type === 'brute' || e.type === 'boss')) AUD.at('step' + ((Math.random()*6)|0), e.x, e.y, 0.3, 16, 0.72);
     const nx = -dy/d, ny = dx/d, o = 0.42*e.fpSide;
     if (!LEVEL) footprints.push({x: e.x + nx*o, y: e.y + ny*o, dx: dx/d, dy: dy/d, t: 0});
     if (footprints.length > 500) footprints.splice(0, footprints.length - 500);
@@ -342,13 +342,15 @@ function updateHero(dt){
   if (hero.air){ heroAir(dt); hero.depth = depthOf(hero.x, hero.y); return; }
   if (!S.dead && !uiBlock() && mag > 0.06){
     const g = unrot(ix, iy), gl = Math.hypot(g[0], g[1]) || 1, gx = g[0]/gl, gy = g[1]/gl;
-    const sprint = (input.sprint || keys['shift']) && S.stamina > 2;
-    let sp = (sprint ? 13.5 : 9.0)*mag*SPD_S; if (S.slow > 0) sp *= 0.55; if (LEVEL && levelFloor(hero.x, hero.y) === 'balls') sp *= 0.42;
+    const sprint = (input.sprint || keys['shift']) && S.stamina > 2 && !hero.sneak;
+    let sp = (sprint ? 13.5 : 9.0)*mag*SPD_S; if (S.slow > 0) sp *= 0.55; if (LEVEL && levelFloor(hero.x, hero.y) === 'balls') sp *= 0.42; if (hero.sneak) sp *= 0.5;
     { const a = P(gx, gy, 0), b = P(0, 0, 0); sp *= Math.min(2.1, SCREEN_REF/Math.max(0.001, Math.hypot(a[0] - b[0], a[1] - b[1]))); }
     if (sprint){ S.stamina = Math.max(0, S.stamina - 22*dt); }
     const ox = hero.x, oy = hero.y;
     if (moveEntity(hero, gx*sp*dt + hero.vx*dt, gy*sp*dt + hero.vy*dt, 0.45)) hero.moving = true;
     stepTrack(hero, ox, oy, 1.6);
+    { const ph = Math.floor((hero.walkPx || 0)/(HERO_H*CHS*STRIDE)*2); if (ph !== hero.stepPh){ hero.stepPh = ph; const tnow = performance.now();
+        if (!hero.lastStep || tnow - hero.lastStep > 240){ hero.lastStep = tnow; AUD.step(hero.sneak ? 0.07 : sprint ? 0.24 : 0.16, (ph%2) ? 0.15 : -0.15); } } }
     hero.step += dt*(sprint ? 14 : 10.5)*mag;
     hero.dir = Math.abs(ix) > Math.abs(iy)*0.9 ? (ix > 0 ? 'r' : 'l') : (iy > 0 ? 'd' : 'u');
     hero.aim = Math.atan2(gy, gx); hero.face = hero.aim;
