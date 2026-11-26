@@ -71,6 +71,7 @@ html,body{margin:0;height:100%;background:#1c1828;overflow:hidden;touch-action:n
 <div id="brel" class="b">↻</div><div id="bwp" class="b">Оружие</div><div id="bmed" class="b">+<span id="medn">0</span></div><div id="bspr" class="b">Бег</div>
 <div id="act" style="display:none"></div>
 <div id="hint" style="display:none">WASD — ходьба · клик мыши / J — огонь · E — действие · R — перезарядка · Q — оружие · H — аптечка · M — карта · Tab — задание</div>
+<div id="fade" style="position:fixed;inset:0;background:#07050c;opacity:0;pointer-events:none;transition:opacity .45s;z-index:35"></div>
 <div id="sl"><div class="sla"></div><div class="slb"></div><div class="slg"></div><div class="slt"></div><div class="sld"></div><div class="sls">Пропустить ›</div></div>
 <div id="dlg"><div class="n" id="dn"></div><div class="x" id="dx"></div><div class="m">нажмите, чтобы продолжить</div></div>
 <div id="dead"><div class="c"><h1>Вы погибли</h1><p>Огонь ещё горит. Вы очнётесь у Вечного огня и потеряете часть денег.</p><button id="rs">Возродиться</button></div></div>
@@ -292,7 +293,7 @@ const AUD = (function(){
     for (const f of fires){ const d = Math.hypot(f.x - hero.x, f.y - hero.y) - 2; if (d < fd) fd = d; }
     if (flameLit && POI.flame){ const d = Math.hypot(POI.flame[0] - hero.x, POI.flame[1] - hero.y) - 3; if (d < fd) fd = d; }
     if (fireG) fireG.gain.setTargetAtTime(0.75*Math.max(0, 1 - Math.max(0, fd)/22), t, 0.3);
-    if (windG) windG.gain.setTargetAtTime(0.16 + 0.12*Math.max(0, Math.min(1, (fd - 10)/30)), t, 0.8);
+    if (windG) windG.gain.setTargetAtTime(LEVEL ? 0.03 : 0.16 + 0.12*Math.max(0, Math.min(1, (fd - 10)/30)), t, 0.8);
     // zombie moans
     moanT -= dt;
     if (moanT <= 0 && zombies.length){
@@ -391,6 +392,7 @@ const $ = id => document.getElementById(id);
 // ---------------------------------------------------------------- collision
 const WB = WORLD.bounds;
 function blocked(x, y, r, ignoreOwn){
+  if (LEVEL) return levelBlocked(x, y, r);
   if (x < WB[0] + 4 || x > WB[2] - 4 || y < WB[1] + 4 || y > WB[3] - 4) return true;
   const nb = nearBuildings(x, y, r + 1);
   for (const b of nb){
@@ -412,6 +414,7 @@ function freeNear(x, y, r){
   return [x, y];
 }
 function losClear(x0, y0, x1, y1){
+  if (LEVEL) return levelLos(x0, y0, x1, y1);
   const d = Math.hypot(x1 - x0, y1 - y0), n = Math.ceil(d/1.2);
   for (let i = 1; i < n; i++){ const t = i/n, x = x0 + (x1 - x0)*t, y = y0 + (y1 - y0)*t; for (const b of nearBuildings(x, y, 1)){ if (b.top > 2.5 && x > b.minx && x < b.maxx && y > b.miny && y < b.maxy && inPoly(x, y, b.p)) return false; } }
   return true;
@@ -425,7 +428,7 @@ function stepTrack(e, ox, oy, stride){
   e.fpD = (e.fpD || 0) + d;
   if (e.fpD > stride){ e.fpD = 0; e.fpSide = -(e.fpSide || 1); if (e === hero) AUD.step(0.5); else if (e.T && (e.type === 'brute' || e.type === 'boss')) AUD.at('step' + ((Math.random()*6)|0), e.x, e.y, 0.55, 16, 0.7);
     const nx = -dy/d, ny = dx/d, o = 0.42*e.fpSide;
-    footprints.push({x: e.x + nx*o, y: e.y + ny*o, dx: dx/d, dy: dy/d, t: 0});
+    if (!LEVEL) footprints.push({x: e.x + nx*o, y: e.y + ny*o, dx: dx/d, dy: dy/d, t: 0});
     if (footprints.length > 500) footprints.splice(0, footprints.length - 500);
   }
 }
@@ -535,7 +538,7 @@ function updateZombies(dt){
     if (z.burn > 0){ z.burn -= dt; z.hp -= 18*dt; if (z.hp <= 0){ killZombie(z, i); continue; } }
     if (z.spawnT < 0.6){ z.spawnT += dt; }
     let mvx = 0, mvy = 0, sp = T.spd*SPD_S;
-    const chasing = !S.dead && (d < T.sight && (d < 9 || losClear(z.x, z.y, hero.x, hero.y)) || z.alert > 0 || z.boss);
+    const chasing = !S.dead && (d < T.sight*(LEVEL ? 0.45 : 1) && (d < 9 || losClear(z.x, z.y, hero.x, hero.y)) || z.alert > 0 || z.boss);
     if (z.alert > 0) z.alert -= dt;
     if (chasing){
       const l = d || 1; mvx = dx/l; mvy = dy/l;
@@ -596,7 +599,7 @@ function hurtHero(d, chill){
 // spawner
 function spawnTick(dt){
   spawnTick.t = (spawnTick.t || 0) - dt; if (spawnTick.t > 0) return; spawnTick.t = 0.45;
-  if (zombies.length >= zombieCap || S.dead) return;
+  if (zombies.length >= zombieCap || S.dead || LEVEL) return;
   for (let k = 0; k < 6; k++){
     const a = Math.random()*TAU, dist = 62 + Math.random()*40, x = hero.x + Math.cos(a)*dist, y = hero.y + Math.sin(a)*dist;
     if (blocked(x, y, 0.6)) continue;
@@ -922,9 +925,14 @@ const CHAINS = [
       D1('Серёгин', 'Сомов-младший. Отца твоего знал. Держи ПМ и не трать патроны на ерунду.'),
       D1('Серёгин', 'Девочку в красном видели у сквера Дзержинского. С ней мужик в очках — с завода, инженер. Найдёшь их — сообщи мне. Обязательно.')], give: {weapon: 'pm', ammo: 24}, reward: {coins: 50}},
     {t: 'kill', n: 7, obj: 'Прорвитесь через сквер Дзержинского', zone: ['square', 70], spawn: ['square', 9, ['walker', 'runner', 'chemist'], 34]},
-    {t: 'collect', obj: 'Обыщите разграбленный «Дзержинец»', items: [{poi: 'mall', name: 'Батарейки', dx: 6, dy: 5}, {poi: 'mall', name: 'Бинты', dx: -8, dy: 4}, {poi: 'mall', name: 'Детская варежка', dx: 3, dy: -9}], spawn: ['mall', 7, ['walker', 'runner', 'chemist'], 30]},
+    {t: 'goto', poi: 'mall', r: 7, obj: 'Войдите в торговый центр «Дзержинец»', enter: 'mall', spawn: ['mall', 5, ['walker', 'runner'], 30]},
+    {t: 'collect', level: 'mall', obj: 'Обыщите «Дзержинец»: аптека, «Электроника», «Детский мир»', items: [{poi: 'm_apteka', name: 'Бинты'}, {poi: 'm_electro', name: 'Батарейки'}, {poi: 'm_kids', name: 'Детская варежка'}]},
+    {t: 'intro', level: 'mall', obj: 'Варежка', lines: [
+      D1(L, 'Красная варежка. Асина — мама вязала ей такие каждую зиму.'),
+      D1(L, 'Она была здесь, совсем недавно. Баба Нюра у входа наверняка что-то видела.')]},
+    {t: 'goto', level: 'mall', poi: 'm_exit', r: 3, obj: 'Выбирайтесь из «Дзержинца» к главному входу', exit: true},
     {t: 'talk', who: 'babka', obj: 'Поговорите с бабой Нюрой у «Дзержинца»', lines: [
-      D1('Баба Нюра', 'Варежка-то красненькая… Видала я её. Девчушка с фонариком и очкастый. Шли к бассейну «Заря», он там внутри всё запирал.'),
+      D1('Баба Нюра', 'Живой вышел, гляди-ка! Варежка-то красненькая… Видала я её. Девчушка с фонариком и очкастый. Шли к бассейну «Заря», он там внутри всё запирал.'),
       D1('Баба Нюра', 'Мертвяки воды боятся, что ли? Не знаю. Иди, иди, сынок.')], reward: {coins: 30}},
     {t: 'goto', poi: 'pool', r: 8, obj: 'Доберитесь до бассейна «Заря»', spawn: ['pool', 6, ['walker', 'runner'], 28]},
     {t: 'defend', poi: 'pool', r: 24, secs: 45, obj: 'Держитесь у бассейна, пока не стихнет', rate: 2.0, types: ['walker', 'runner', 'chemist']},
@@ -978,13 +986,13 @@ const CHAINS = [
       D1('Ася', '…'),
       D1('', 'На секунду в глазах Аси вспыхивает зелёный свет. Конец первой главы.')], reward: {coins: 300}}
   ]},
-  {id: 'side1', title: 'Самогон бабы Нюры', unlock: 12, steps: [
+  {id: 'side1', title: 'Самогон бабы Нюры', unlock: 15, steps: [
     {t: 'talk', who: 'babka', obj: 'Поговорите с бабой Нюрой', lines: [
       D1('Баба Нюра', 'Бугаи в трениках огня боятся пуще всего. Принеси три пустые бутылки с машин у «Дзержинца» — налью своего, крепкого, с тряпочкой.')]},
     {t: 'collect', obj: 'Соберите 3 бутылки у брошенных машин', items: [{poi: 'mall', name: 'Бутылка', dx: 14, dy: 10}, {poi: 'mall', name: 'Бутылка', dx: -15, dy: -6}, {poi: 'arch', name: 'Бутылка', dx: 6, dy: 6}], spawn: ['mall', 5, ['walker', 'runner'], 30]},
     {t: 'talk', who: 'babka', obj: 'Вернитесь к бабе Нюре', lines: [D1('Баба Нюра', 'Вот, держи. Не пей только — это для них.')], give: {weapon: 'obrez', ammo: 10, mol: 4}, reward: {coins: 60}}
   ]},
-  {id: 'side2', title: 'Тир в парке', unlock: 17, steps: [
+  {id: 'side2', title: 'Тир в парке', unlock: 20, steps: [
     {t: 'goto', poi: 'tir', r: 5, obj: 'Обыщите тир Центрального парка', lines: [D1('Тир', 'Под прилавком — коробка патронов и старая ТОЗ-8.')], give: {weapon: 'tozz', ammo: 25}, spawn: ['tir', 6, ['walker', 'frost'], 24]},
     {t: 'kill', n: 6, obj: 'Зачистите аллеи парка', zone: ['park', 110], spawn: ['park', 8, ['walker', 'runner', 'frost'], 40], reward: {coins: 80, ammo: 20}}
   ]}
@@ -998,6 +1006,7 @@ const Quests = (function(){
   function trackedChain(){ const c = ch[tracked]; if (c && c.active && !c.done) return c; for (let i = 0; i < ch.length; i++) if (ch[i].active && !ch[i].done){ tracked = i; return ch[i]; } return null; }
   function stepTarget(c){
     const s = cur(c); if (!s) return null;
+    if (s.level && (!LEVEL || LEVEL.id !== s.level)) return pos('mall');
     if (s.t === 'talk'){ const n = npcs[s.who]; return n ? [n.x, n.y] : null; }
     if (s.t === 'intro') return null;
     if (s.t === 'choice') return pos(s.opts[0].poi);
@@ -1036,6 +1045,8 @@ const Quests = (function(){
   }
   function finishStep(c){
     const s = cur(c); if (!s) return;
+    if (s.enter) enterLevel(s.enter);
+    if (s.exit) leaveLevel();
     if (s.hide) s.hide.forEach(id => { if (npcs[id]){ npcs[id].hidden = true; npcs[id].follow = false; } });
     if (s.give){
       if (s.give.weapon) { giveWeapon(s.give.weapon, s.give.ammo || 0); toast('Получено: ' + WEAPONS[s.give.weapon].name); }
@@ -1082,6 +1093,7 @@ const Quests = (function(){
     for (const c of ch){
       if (!c.active || c.done) continue; const s = cur(c); if (!s) continue;
       if (!c.begun) beginStep(c);
+      if (s.level && (!LEVEL || LEVEL.id !== s.level)) continue;
       if (s.t === 'intro'){
         if (!c.said && !dlgLines){ c.said = true; say(s.lines, () => finishStep(c), s); }
       } else if (s.t === 'choice'){
@@ -1141,9 +1153,84 @@ const Quests = (function(){
   }
   function itemsToDraw(){ const out = []; ch.forEach(c => { if (c.active && !c.done) c.items.forEach(i => { if (!i.got) out.push(i); }); }); return out; }
   function defendInfo(){ const c = trackedChain(); if (!c) return null; const s = cur(c); return s && s.t === 'defend' ? {p: pos(s.poi), r: s.r} : null; }
-  return {update, interact, canInteract, onKill, onNpcDead, updateUI, targets, itemsToDraw, defendInfo, curType(){ const c = ch[0]; const s = c && cur(c); return s ? s.t : null; }, chains: ch, progressCount: () => completed, cycle(){ for (let k = 1; k <= ch.length; k++){ const i = (tracked + k)%ch.length; if (ch[i].active && !ch[i].done){ tracked = i; break; } } updateUI(); }, start(){ ch.forEach(c => { if (c.active) beginStep(c); }); updateUI(); }};
+  return {update, interact, canInteract, onKill, onNpcDead, updateUI, targets, itemsToDraw, defendInfo, levelWanted(){ for (const c of ch){ if (!c.active || c.done) continue; const s = cur(c); if (s && s.level) return s.level; } return null; }, curType(){ const c = ch[0]; const s = c && cur(c); return s ? s.t : null; }, chains: ch, progressCount: () => completed, cycle(){ for (let k = 1; k <= ch.length; k++){ const i = (tracked + k)%ch.length; if (ch[i].active && !ch[i].done){ tracked = i; break; } } updateUI(); }, start(){ ch.forEach(c => { if (c.active) beginStep(c); }); updateUI(); }};
 })();
 let flameLit = false;
+
+// ---------------------------------------------------------------- interior levels (ТЦ «Дзержинец»)
+// An interior lives far away from the city in the same world space (grid offset OX/OY), so the usual
+// systems (zombies, pickups, quests, projection) work unchanged; collision, background, light and map are swapped.
+const LEVELS = {mall: {"OX": 3000.0, "OY": 3000.0, "GW": 84, "GH": 52, "rects": [{"x0": 0, "y0": 0, "x1": 84, "y1": 0.4, "h": 4.2, "k": "wall", "c": [150, 140, 160]}, {"x0": 0, "y0": 0, "x1": 0.4, "y1": 52, "h": 4.2, "k": "wall", "c": [150, 140, 160]}, {"x0": 83.6, "y0": 0, "x1": 84, "y1": 52, "h": 1.0, "k": "wall", "c": [150, 140, 160]}, {"x0": 0, "y0": 51.6, "x1": 36, "y1": 52, "h": 1.0, "k": "wall", "c": [150, 140, 160]}, {"x0": 48, "y0": 51.6, "x1": 84, "y1": 52, "h": 1.0, "k": "wall", "c": [150, 140, 160]}, {"x0": 19.8, "y0": 0, "x1": 20.2, "y1": 12, "h": 1.3, "k": "wall", "c": [170, 160, 175]}, {"x0": 43.8, "y0": 0, "x1": 44.2, "y1": 12, "h": 1.3, "k": "wall", "c": [170, 160, 175]}, {"x0": 63.8, "y0": 0, "x1": 64.2, "y1": 12, "h": 1.3, "k": "wall", "c": [170, 160, 175]}, {"x0": 0, "y0": 11.8, "x1": 8, "y1": 12.2, "h": 1.3, "k": "wall", "c": [170, 160, 175]}, {"x0": 12, "y0": 11.8, "x1": 20, "y1": 12.2, "h": 1.3, "k": "wall", "c": [170, 160, 175]}, {"x0": 20, "y0": 11.8, "x1": 30, "y1": 12.2, "h": 1.3, "k": "wall", "c": [170, 160, 175]}, {"x0": 34, "y0": 11.8, "x1": 44, "y1": 12.2, "h": 1.3, "k": "wall", "c": [170, 160, 175]}, {"x0": 44, "y0": 11.8, "x1": 52, "y1": 12.2, "h": 1.3, "k": "wall", "c": [170, 160, 175]}, {"x0": 56, "y0": 11.8, "x1": 64, "y1": 12.2, "h": 1.3, "k": "wall", "c": [170, 160, 175]}, {"x0": 64, "y0": 11.8, "x1": 72, "y1": 12.2, "h": 1.3, "k": "wall", "c": [170, 160, 175]}, {"x0": 76, "y0": 11.8, "x1": 84, "y1": 12.2, "h": 1.3, "k": "wall", "c": [170, 160, 175]}, {"x0": 13.8, "y0": 12, "x1": 14.2, "y1": 19, "h": 1.3, "k": "wall", "c": [170, 160, 175]}, {"x0": 13.8, "y0": 23, "x1": 14.2, "y1": 30, "h": 1.3, "k": "wall", "c": [170, 160, 175]}, {"x0": 0, "y0": 29.8, "x1": 14, "y1": 30.2, "h": 1.3, "k": "wall", "c": [170, 160, 175]}, {"x0": 69.8, "y0": 12, "x1": 70.2, "y1": 22, "h": 1.3, "k": "wall", "c": [170, 160, 175]}, {"x0": 69.8, "y0": 26, "x1": 70.2, "y1": 40, "h": 1.3, "k": "wall", "c": [170, 160, 175]}, {"x0": 70, "y0": 39.8, "x1": 84, "y1": 40.2, "h": 1.3, "k": "wall", "c": [170, 160, 175]}, {"x0": 59.8, "y0": 44, "x1": 60.2, "y1": 52, "h": 1.3, "k": "wall", "c": [170, 160, 175]}, {"x0": 40, "y0": 22, "x1": 46, "y1": 28, "h": 0.9, "k": "fountain", "c": [120, 150, 170]}, {"x0": 30, "y0": 15, "x1": 33, "y1": 25, "h": 2.2, "k": "escalator", "c": [110, 110, 120]}, {"x0": 2, "y0": 2, "x1": 18, "y1": 3.4, "h": 1.8, "k": "shelf", "c": [200, 210, 200]}, {"x0": 6, "y0": 7, "x1": 14, "y1": 8.2, "h": 1.1, "k": "counter", "c": [220, 220, 225]}, {"x0": 22, "y0": 3, "x1": 42, "y1": 4.2, "h": 1.6, "k": "shelf", "c": [190, 120, 90]}, {"x0": 22, "y0": 6.5, "x1": 42, "y1": 7.7, "h": 1.6, "k": "shelf", "c": [190, 120, 90]}, {"x0": 24, "y0": 9.6, "x1": 30, "y1": 10.6, "h": 1.0, "k": "counter", "c": [160, 160, 170]}, {"x0": 34, "y0": 9.6, "x1": 40, "y1": 10.6, "h": 1.0, "k": "counter", "c": [160, 160, 170]}, {"x0": 46, "y0": 2, "x1": 62, "y1": 3.2, "h": 1.7, "k": "shelf", "c": [90, 110, 150]}, {"x0": 48, "y0": 6, "x1": 54, "y1": 8, "h": 1.0, "k": "table", "c": [80, 90, 120]}, {"x0": 56, "y0": 6, "x1": 62, "y1": 8, "h": 1.0, "k": "table", "c": [80, 90, 120]}, {"x0": 66, "y0": 2, "x1": 82, "y1": 3.2, "h": 1.6, "k": "shelf", "c": [220, 140, 160]}, {"x0": 68, "y0": 6, "x1": 72, "y1": 9, "h": 0.8, "k": "table", "c": [240, 200, 120]}, {"x0": 76, "y0": 6, "x1": 81, "y1": 8, "h": 0.9, "k": "table", "c": [120, 190, 200]}, {"x0": 2, "y0": 14, "x1": 4.4, "y1": 16.4, "h": 1.4, "k": "crate", "c": [150, 120, 80]}, {"x0": 5, "y0": 14, "x1": 7.4, "y1": 16.4, "h": 1.4, "k": "crate", "c": [150, 120, 80]}, {"x0": 2, "y0": 18, "x1": 4.4, "y1": 20.4, "h": 1.4, "k": "crate", "c": [150, 120, 80]}, {"x0": 8, "y0": 25, "x1": 10.4, "y1": 27.4, "h": 1.4, "k": "crate", "c": [150, 120, 80]}, {"x0": 2, "y0": 25, "x1": 4.4, "y1": 27.4, "h": 1.4, "k": "crate", "c": [150, 120, 80]}, {"x0": 73, "y0": 15, "x1": 81, "y1": 15.8, "h": 1.5, "k": "rack", "c": [160, 100, 140]}, {"x0": 73, "y0": 21, "x1": 81, "y1": 21.8, "h": 1.5, "k": "rack", "c": [160, 100, 140]}, {"x0": 73, "y0": 29, "x1": 81, "y1": 29.8, "h": 1.5, "k": "rack", "c": [160, 100, 140]}, {"x0": 73, "y0": 34, "x1": 81, "y1": 34.8, "h": 1.5, "k": "rack", "c": [160, 100, 140]}, {"x0": 4, "y0": 36, "x1": 6.5, "y1": 38.5, "h": 0.8, "k": "table", "c": [200, 170, 110]}, {"x0": 4, "y0": 42, "x1": 6.5, "y1": 44.5, "h": 0.8, "k": "table", "c": [200, 170, 110]}, {"x0": 10, "y0": 36, "x1": 12.5, "y1": 38.5, "h": 0.8, "k": "table", "c": [200, 170, 110]}, {"x0": 10, "y0": 42, "x1": 12.5, "y1": 44.5, "h": 0.8, "k": "table", "c": [200, 170, 110]}, {"x0": 16, "y0": 36, "x1": 18.5, "y1": 38.5, "h": 0.8, "k": "table", "c": [200, 170, 110]}, {"x0": 16, "y0": 42, "x1": 18.5, "y1": 44.5, "h": 0.8, "k": "table", "c": [200, 170, 110]}, {"x0": 2, "y0": 47, "x1": 22, "y1": 49, "h": 1.1, "k": "counter", "c": [180, 90, 70]}, {"x0": 62, "y0": 49, "x1": 82, "y1": 50.6, "h": 1.8, "k": "shelf", "c": [120, 140, 100]}, {"x0": 66, "y0": 43, "x1": 72, "y1": 45, "h": 1.0, "k": "table", "c": [110, 110, 110]}, {"x0": 50, "y0": 34, "x1": 56, "y1": 35.4, "h": 1.1, "k": "barricade", "c": [90, 90, 100]}, {"x0": 18, "y0": 26, "x1": 24, "y1": 27.4, "h": 1.1, "k": "barricade", "c": [90, 90, 100]}], "zones": {"Аптека": [10, 6], "Продукты": [32, 6], "Электроника": [54, 6], "Детский мир": [74, 6], "Склад": [7, 21], "Одежда": [77, 26], "Фуд-корт": [13, 40], "Хозтовары": [72, 46], "Атриум": [42, 31]}, "pois": {"m_enter": [42, 49], "m_exit": [42, 50.5], "m_apteka": [9, 9.5], "m_electro": [51, 9.5], "m_kids": [70, 10.5], "m_food": [13, 45]}, "spawns": [[10, 6, "walker"], [32, 8, "brute"], [26, 4.8, "walker"], [55, 4.5, "runner"], [77, 10, "walker"], [7, 21, "chemist"], [77, 31, "walker"], [12, 39, "walker"], [18, 44, "runner"], [66, 47, "walker"], [60, 28, "walker"], [24, 30, "walker"]], "lights": [[42, 25, "cold"], [10, 10, "red"], [54, 10, "red"], [74, 10, "cold"], [13, 44, "warm"], [42, 46, "cold"], [77, 30, "red"]], "prect": [-486.0, 16446.978, 310.0, 16898.0], "img": [2048, 1160]}};
+let LEVEL = null;                         // null = city
+function lvW(L, gx, gy){ const X = gx + L.OX, Y = gy + L.OY; return [X*cb + Y*sb, -X*sb + Y*cb]; }   // grid -> world
+function lvG(L, x, y){ return [x*cb - y*sb - L.OX, x*sb + y*cb - L.OY]; }                         // world -> grid
+(function(){ for (const id in LEVELS){ const L = LEVELS[id]; L.id = id; L.bg = new Image(); L.bgReady = false; L.bg.onload = () => { L.bgReady = true; };
+  for (const k in L.pois) POI[k] = lvW(L, L.pois[k][0], L.pois[k][1]); } })();
+function levelBlocked(x, y, r){
+  const L = LEVEL, g = lvG(L, x, y), X = g[0], Y = g[1];
+  if (X < 0.3 + r || Y < 0.3 + r || X > L.GW - 0.3 - r || Y > L.GH - 0.3 - r) return true;
+  for (const b of L.rects){ if (X > b.x0 - r && X < b.x1 + r && Y > b.y0 - r && Y < b.y1 + r) return true; }
+  return false;
+}
+function levelLos(x0, y0, x1, y1){
+  const L = LEVEL, d = Math.hypot(x1 - x0, y1 - y0), n = Math.ceil(d/0.8);
+  for (let i = 1; i < n; i++){ const t = i/n, g = lvG(L, x0 + (x1 - x0)*t, y0 + (y1 - y0)*t);
+    for (const b of L.rects){ if (b.h >= 1.25 && g[0] > b.x0 && g[0] < b.x1 && g[1] > b.y0 && g[1] < b.y1) return false; } }
+  return true;
+}
+function fadeScreen(cb){
+  if (window.__fastSlides){ cb(); camInit = false; return; }
+  const f = document.getElementById('fade'); f.style.opacity = 1;
+  setTimeout(() => { cb(); camInit = false; setTimeout(() => { f.style.opacity = 0; }, 120); }, 450);
+}
+function enterLevel(id, silent){
+  const L = LEVELS[id]; if (!L || LEVEL === L) return;
+  if (!L.bg.src) L.bg.src = 'lv/' + id + '.webp';
+  const go = () => {
+    LEVEL = L; L.cityPos = [hero.x, hero.y];
+    zombies.length = 0; footprints.length = 0; fires.length = 0; bullets.length = 0; spits.length = 0;
+    const p = POI.m_enter; hero.x = p[0]; hero.y = p[1]; hero.vx = hero.vy = 0;
+    for (const s of L.spawns){ const w = lvW(L, s[0], s[1]); const q = freeNear(w[0], w[1], 0.5); const z = makeZombie(s[2], q[0], q[1]); z.keep = true; z.alert = 0; z.still = Math.random() < 0.5; }
+    toast('ТЦ «Дзержинец»', 2.5);
+  };
+  silent ? go() : fadeScreen(go);
+}
+function leaveLevel(silent){
+  if (!LEVEL) return;
+  const go = () => {
+    LEVEL = null; zombies.length = 0; bullets.length = 0; spits.length = 0; fires.length = 0;
+    const p = freeNear(POI.mall[0], POI.mall[1], 0.5); hero.x = p[0]; hero.y = p[1]; hero.vx = hero.vy = 0;
+  };
+  silent ? go() : fadeScreen(go);
+}
+// re-enter automatically if a mall step is active and the hero walks up to the entrance
+function levelTick(){
+  if (LEVEL || S.dead || dlgLines || slidesOn) return;
+  const id = Quests.levelWanted(); if (!id) return;
+  const p = POI.mall; if (Math.hypot(hero.x - p[0], hero.y - p[1]) < 7) enterLevel(id);
+}
+function drawLevelBg(cx){
+  const L = LEVEL; if (!L.bgReady) return;
+  const r = L.prect; cx.drawImage(L.bg, r[0], r[1], r[2] - r[0], r[3] - r[1]);
+}
+const LV_LIGHT = {red: 'red', cold: 'cold', warm: 'warm'};
+function levelLights(){
+  const L = LEVEL, out = [];
+  for (const l of L.lights){ const w = lvW(L, l[0], l[1]), s = P(w[0], w[1], 0);
+    const fl = l[2] === 'red' ? 0.75 + 0.25*Math.sin(time*3 + l[0]) : (Math.sin(time*23 + l[1]) > 0.93 ? 0.35 : 0.85);   // red blink, cold flicker
+    out.push({x: s[0], y: s[1] - 20, r: l[2] === 'warm' ? 95 : 80, i: fl, tint: l[2]}); }
+  return out;
+}
+// mini-map: schematic of the interior
+function drawLevelMini(c, toM, R){
+  const L = LEVEL, W = (gx, gy) => { const w = lvW(L, gx, gy); return toM(w[0], w[1]); };
+  const poly = (pts, fill) => { c.beginPath(); pts.forEach((p, i) => i ? c.lineTo(p[0], p[1]) : c.moveTo(p[0], p[1])); c.closePath(); c.fillStyle = fill; c.fill(); };
+  c.fillStyle = '#1c1628'; c.fillRect(0, 0, R, R);
+  poly([W(0, 0), W(L.GW, 0), W(L.GW, L.GH), W(0, L.GH)], '#4a4260');
+  for (const b of L.rects) poly([W(b.x0, b.y0), W(b.x1, b.y0), W(b.x1, b.y1), W(b.x0, b.y1)], b.k === 'wall' ? '#d8cdb4' : '#8d7f9e');
+  c.font = '600 ' + Math.round(7*DPR) + 'px Georgia, serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+  for (const k in L.zones){ const q = W(L.zones[k][0], L.zones[k][1]); c.lineWidth = 3*DPR; c.strokeStyle = 'rgba(28,20,40,.9)'; c.strokeText(k, q[0], q[1]); c.fillStyle = '#ffe2a0'; c.fillText(k, q[0], q[1]); }
+}
 
 // ---------------------------------------------------------------- slideshow: intro + story cutscenes
 const SCENES = {
@@ -1322,7 +1409,7 @@ const corpseDraw = (c, cp) => {
 // ---------------------------------------------------------------- frame
 let camX = 0, camY = 0, camInit = false;
 function render(){
-  cx.setTransform(1, 0, 0, 1, 0, 0); cx.fillStyle = '#c9b4c6'; cx.fillRect(0, 0, cv.width, cv.height);
+  cx.setTransform(1, 0, 0, 1, 0, 0); cx.fillStyle = LEVEL ? '#0e0a16' : '#c9b4c6'; cx.fillRect(0, 0, cv.width, cv.height);
   const hs = P(hero.x, hero.y, 0);
   let tx = hs[0] - VWu/2 + (hero.fx ? -hero.fx*0 : 0), ty = hs[1] - VHu*0.52;
   if (!camInit){ camX = tx; camY = ty; camInit = true; }
@@ -1331,7 +1418,7 @@ function render(){
   cx.setTransform(K, 0, 0, K, -cX*K, -cY*K);
   cx.imageSmoothingEnabled = true; cx.imageSmoothingQuality = 'high';
   const vx0 = cX, vy0 = cY, vx1 = cX + VWu, vy1 = cY + VHu;
-  drawTiles(cx, vx0 - 300, vy0 - 300, vx1 + 300, vy1 + 300, true);   // loads neighbours too
+  if (LEVEL) drawLevelBg(cx); else drawTiles(cx, vx0 - 300, vy0 - 300, vx1 + 300, vy1 + 300, true);   // loads neighbours too
   // footprints in the snow
   cx.save();
   for (const f of footprints){
@@ -1401,7 +1488,7 @@ function render(){
   drawArrows(cX, cY);
   if (tilesWaiting()){ cx.fillStyle = 'rgba(255,255,255,.7)'; cx.font = (12*DPR) + 'px system-ui'; cx.textAlign = 'center'; cx.fillText('Загрузка карты…', cv.width/2, cv.height - 20*DPR); }
 }
-function tilesWaiting(){ const hs = P(hero.x, hero.y, 0); return tilesIn(hs[0] - 50, hs[1] - 50, hs[0] + 50, hs[1] + 50).some(t => t.state !== 2); }
+function tilesWaiting(){ if (LEVEL) return !LEVEL.bgReady; const hs = P(hero.x, hero.y, 0); return tilesIn(hs[0] - 50, hs[1] - 50, hs[0] + 50, hs[1] + 50).some(t => t.state !== 2); }
 function drawArrows(cX, cY){
   const tg = Quests.targets(); const cxm = cv.width/2, cym = cv.height*0.52;
   tg.forEach(t => {
@@ -1434,12 +1521,13 @@ function drawMini(){
   const c = mmc, R = mm.width;
   c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, R, R); c.save(); c.beginPath(); c.arc(R/2, R/2, R/2 - 2, 0, TAU); c.clip(); c.fillStyle = '#28223a'; c.fillRect(0, 0, R, R);
   const hp = mmPos(hero.x, hero.y);
-  const WN = 170, k = bigMap ? R/(OVS[2]*0.78) : R/WN, ox = bigMap ? OVS[2]*0.11 : hp[0] - WN/2, oy = bigMap ? 2024*0.5 - OVS[2]*0.39 : hp[1] - WN/2;
+  const WN = LEVEL ? 95 : 170, k = bigMap ? R/(OVS[2]*0.78) : R/WN, ox = bigMap ? OVS[2]*0.11 : hp[0] - WN/2, oy = bigMap ? 2024*0.5 - OVS[2]*0.39 : hp[1] - WN/2;
   c.imageSmoothingQuality = 'high';
-  for (const t of MMT){ if (!t.im.complete || !t.im.naturalWidth) continue; const x = (t.x - ox)*k, y = (t.y - oy)*k, w = t.w*k, h = t.h*k; if (x > R || y > R || x + w < 0 || y + h < 0) continue; c.drawImage(t.im, x, y, w + 0.5, h + 0.5); }
   const toM = (x, y) => { const p = mmPos(x, y); return [(p[0] - ox)*k, (p[1] - oy)*k]; };
+  if (LEVEL) drawLevelMini(c, toM, R); else
+  for (const t of MMT){ if (!t.im.complete || !t.im.naturalWidth) continue; const x = (t.x - ox)*k, y = (t.y - oy)*k, w = t.w*k, h = t.h*k; if (x > R || y > R || x + w < 0 || y + h < 0) continue; c.drawImage(t.im, x, y, w + 0.5, h + 0.5); }
   c.font = '600 ' + Math.round((bigMap ? 10 : 8.5)*DPR) + 'px Georgia, serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
-  for (const L of MM_LAB){ const p = POI[L[0]]; if (!p || (bigMap && L[2])) continue; const q = toM(p[0], p[1]); if (q[0] < -40 || q[0] > R + 40 || q[1] < -10 || q[1] > R + 10) continue;
+  if (!LEVEL) for (const L of MM_LAB){ const p = POI[L[0]]; if (!p || (bigMap && L[2])) continue; const q = toM(p[0], p[1]); if (q[0] < -40 || q[0] > R + 40 || q[1] < -10 || q[1] > R + 10) continue;
     c.lineWidth = 3*DPR; c.strokeStyle = 'rgba(28,20,40,.9)'; c.strokeText(L[1], q[0], q[1]); c.fillStyle = '#ffe2a0'; c.fillText(L[1], q[0], q[1]); }
   Quests.targets().forEach(t => {
     const p = toM(t.x, t.y), col = t.main ? '#ffd36a' : '#9ad4ff', cxm = R/2, cym = R/2;
@@ -1489,6 +1577,7 @@ function uiBlock(){ return !!dlgLines || !running; }
 function interact(){ if (dlgLines){ nextLine(); return; } if (Quests.interact()) return; }
 function onDeath(){ $('dead').style.display = 'flex'; input.x = input.y = 0; input.fire = false; }
 function respawn(){
+  if (LEVEL) leaveLevel(true);
   $('dead').style.display = 'none'; S.dead = false; S.hp = S.maxHp; S.coins = Math.floor(S.coins*0.8); const p = freeNear(POI.flame[0] + 6, POI.flame[1] - 6, 0.5); hero.x = p[0]; hero.y = p[1]; zombies.length = 0; spawnQuestZombies();
   hud();
 }
@@ -1556,7 +1645,7 @@ function frame(ts){
   const dt = Math.min(0.05, (ts - last)/1000 || 0.016); last = ts; dtLast = dt; time += dt;
   if (running){
     if (!dlgLines && !slidesOn){
-      updateHero(dt); updateZombies(dt); updateNpcs(dt); updateBullets(dt); updatePickups(dt); spawnTick(dt); Quests.update(dt);
+      levelTick(); updateHero(dt); updateZombies(dt); updateNpcs(dt); updateBullets(dt); updatePickups(dt); spawnTick(dt); Quests.update(dt);
       zombieCap = 12 + Math.min(10, Math.floor(Quests.progressCount()/2));
       S.stamina = Math.max(0, Math.min(100, S.stamina)); elSt.style.width = S.stamina + '%';
       for (const cp of corpses) cp.t += dt; for (const f of footprints) f.t += dt; while (footprints.length && footprints[0].t > 40) footprints.shift();
@@ -1575,7 +1664,7 @@ $('go').addEventListener('click', () => {
   try { const w = window.Telegram.WebApp; w.ready(); w.expand(); if (w.disableVerticalSwipes) w.disableVerticalSwipes(); } catch (_) {}
 });
 requestAnimationFrame(frame);
-window.__dbg = {AUD, colMask, nearestFire, CM, hero, S, zombies, Quests, tiles, P, POI, blocked, occludersOf, input, freeNear, npcs, bullets, pickups, giveWeapon, makeZombie, nextLine, interact, killZombie, hud, get dlg(){ return dlgLines; }, get zlist(){ return zombies; }, step(dt){ updateHero(dt); updateZombies(dt); updateNpcs(dt); updateBullets(dt); updatePickups(dt); Quests.update(dt); }};
+window.__dbg = {AUD, enterLevel, leaveLevel, LEVELS, get LEVEL(){ return LEVEL; }, colMask, nearestFire, CM, hero, S, zombies, Quests, tiles, P, POI, blocked, occludersOf, input, freeNear, npcs, bullets, pickups, giveWeapon, makeZombie, nextLine, interact, killZombie, hud, get dlg(){ return dlgLines; }, get zlist(){ return zombies; }, step(dt){ updateHero(dt); updateZombies(dt); updateNpcs(dt); updateBullets(dt); updatePickups(dt); Quests.update(dt); }};
 
 // ---------------------------------------------------------------- living fire + flickering light
 // FIRES: painted bonfires/barrels found on the map tiles (P-space x,y at flame base, s = flame size in P units)
@@ -1597,6 +1686,7 @@ function fireLights(vx0, vy0, vx1, vy1){
   for (const f of FIRES) if (f.x > vx0 - 200 && f.x < vx1 + 200 && f.y > vy0 - 200 && f.y < vy1 + 200) L.push({x: f.x, y: f.y - f.s*0.3, r: 70 + f.s*3.2, i: flick(f.seed, time), f});
   for (const f of fires){ const s = P(f.x, f.y, 0); L.push({x: s[0], y: s[1] - 6, r: 110, i: flick(f.x, time)*Math.min(1, (f.life - f.t)/1.5), dyn: true}); }
   if (typeof flameLit !== 'undefined' && flameLit){ const s = P(POI.flame[0], POI.flame[1], 0); L.push({x: s[0], y: s[1] - 10, r: 160, i: flick(3, time)}); }
+  if (LEVEL) L.push(...levelLights());
   if (hero.muzzle > 0){ const s = P(hero.x, hero.y, 1.2); L.push({x: s[0], y: s[1], r: 90, i: 1.2, muzzle: true}); }
   return L;
 }
@@ -1646,10 +1736,10 @@ function drawLightMap(cx, L, cX, cY){
   if (lightCv.width !== W || lightCv.height !== H){ lightCv.width = W; lightCv.height = H; }
   const c = lightCx, k = K/4;
   c.globalCompositeOperation = 'source-over'; c.clearRect(0, 0, W, H);
-  c.fillStyle = 'rgba(18,10,40,0.30)'; c.fillRect(0, 0, W, H);
+  c.fillStyle = LEVEL ? 'rgba(8,5,18,0.72)' : 'rgba(18,10,40,0.30)'; c.fillRect(0, 0, W, H);
   c.globalCompositeOperation = 'destination-out';
   const hl = P(hero.x, hero.y, 0);
-  const all = L.concat([{x: hl[0], y: hl[1] - 8, r: 55, i: 1}]);   // a little personal light around the hero
+  const all = L.concat([{x: hl[0], y: hl[1] - 8, r: LEVEL ? 70 : 55, i: 1}]);   // a little personal light around the hero
   for (const l of all){
     const x = (l.x - cX)*k, y = (l.y - cY)*k, r = l.r*l.i*k*1.25;
     const g = c.createRadialGradient(x, y, 0, x, y, r);
@@ -1657,7 +1747,14 @@ function drawLightMap(cx, L, cX, cY){
     c.fillStyle = g; c.beginPath(); c.ellipse(x, y, r, r*0.62, 0, 0, TAU); c.fill();
   }
   cx.save(); cx.setTransform(1, 0, 0, 1, 0, 0); cx.imageSmoothingEnabled = true;
-  cx.drawImage(lightCv, 0, 0, W, H, 0, 0, W*4, H*4); cx.restore();
+  cx.drawImage(lightCv, 0, 0, W, H, 0, 0, W*4, H*4);
+  // coloured glow of emergency lights (additive)
+  cx.globalCompositeOperation = 'lighter';
+  for (const l of L){ if (!l.tint) continue; const x = (l.x - cX)*K, y = (l.y - cY)*K, r = l.r*K*1.1;
+    const col = l.tint === 'red' ? '255,40,40' : l.tint === 'warm' ? '255,150,60' : '120,170,255';
+    const g = cx.createRadialGradient(x, y, 0, x, y, r); g.addColorStop(0, 'rgba(' + col + ',' + (0.22*l.i).toFixed(3) + ')'); g.addColorStop(1, 'rgba(' + col + ',0)');
+    cx.fillStyle = g; cx.beginPath(); cx.ellipse(x, y, r, r*0.62, 0, 0, TAU); cx.fill(); }
+  cx.globalCompositeOperation = 'source-over'; cx.restore();
 }
 
 

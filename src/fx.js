@@ -18,6 +18,7 @@ function fireLights(vx0, vy0, vx1, vy1){
   for (const f of FIRES) if (f.x > vx0 - 200 && f.x < vx1 + 200 && f.y > vy0 - 200 && f.y < vy1 + 200) L.push({x: f.x, y: f.y - f.s*0.3, r: 70 + f.s*3.2, i: flick(f.seed, time), f});
   for (const f of fires){ const s = P(f.x, f.y, 0); L.push({x: s[0], y: s[1] - 6, r: 110, i: flick(f.x, time)*Math.min(1, (f.life - f.t)/1.5), dyn: true}); }
   if (typeof flameLit !== 'undefined' && flameLit){ const s = P(POI.flame[0], POI.flame[1], 0); L.push({x: s[0], y: s[1] - 10, r: 160, i: flick(3, time)}); }
+  if (LEVEL) L.push(...levelLights());
   if (hero.muzzle > 0){ const s = P(hero.x, hero.y, 1.2); L.push({x: s[0], y: s[1], r: 90, i: 1.2, muzzle: true}); }
   return L;
 }
@@ -67,10 +68,10 @@ function drawLightMap(cx, L, cX, cY){
   if (lightCv.width !== W || lightCv.height !== H){ lightCv.width = W; lightCv.height = H; }
   const c = lightCx, k = K/4;
   c.globalCompositeOperation = 'source-over'; c.clearRect(0, 0, W, H);
-  c.fillStyle = 'rgba(18,10,40,0.30)'; c.fillRect(0, 0, W, H);
+  c.fillStyle = LEVEL ? 'rgba(8,5,18,0.72)' : 'rgba(18,10,40,0.30)'; c.fillRect(0, 0, W, H);
   c.globalCompositeOperation = 'destination-out';
   const hl = P(hero.x, hero.y, 0);
-  const all = L.concat([{x: hl[0], y: hl[1] - 8, r: 55, i: 1}]);   // a little personal light around the hero
+  const all = L.concat([{x: hl[0], y: hl[1] - 8, r: LEVEL ? 70 : 55, i: 1}]);   // a little personal light around the hero
   for (const l of all){
     const x = (l.x - cX)*k, y = (l.y - cY)*k, r = l.r*l.i*k*1.25;
     const g = c.createRadialGradient(x, y, 0, x, y, r);
@@ -78,5 +79,12 @@ function drawLightMap(cx, L, cX, cY){
     c.fillStyle = g; c.beginPath(); c.ellipse(x, y, r, r*0.62, 0, 0, TAU); c.fill();
   }
   cx.save(); cx.setTransform(1, 0, 0, 1, 0, 0); cx.imageSmoothingEnabled = true;
-  cx.drawImage(lightCv, 0, 0, W, H, 0, 0, W*4, H*4); cx.restore();
+  cx.drawImage(lightCv, 0, 0, W, H, 0, 0, W*4, H*4);
+  // coloured glow of emergency lights (additive)
+  cx.globalCompositeOperation = 'lighter';
+  for (const l of L){ if (!l.tint) continue; const x = (l.x - cX)*K, y = (l.y - cY)*K, r = l.r*K*1.1;
+    const col = l.tint === 'red' ? '255,40,40' : l.tint === 'warm' ? '255,150,60' : '120,170,255';
+    const g = cx.createRadialGradient(x, y, 0, x, y, r); g.addColorStop(0, 'rgba(' + col + ',' + (0.22*l.i).toFixed(3) + ')'); g.addColorStop(1, 'rgba(' + col + ',0)');
+    cx.fillStyle = g; cx.beginPath(); cx.ellipse(x, y, r, r*0.62, 0, 0, TAU); cx.fill(); }
+  cx.globalCompositeOperation = 'source-over'; cx.restore();
 }

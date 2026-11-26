@@ -62,9 +62,14 @@ const CHAINS = [
       D1('Серёгин', 'Сомов-младший. Отца твоего знал. Держи ПМ и не трать патроны на ерунду.'),
       D1('Серёгин', 'Девочку в красном видели у сквера Дзержинского. С ней мужик в очках — с завода, инженер. Найдёшь их — сообщи мне. Обязательно.')], give: {weapon: 'pm', ammo: 24}, reward: {coins: 50}},
     {t: 'kill', n: 7, obj: 'Прорвитесь через сквер Дзержинского', zone: ['square', 70], spawn: ['square', 9, ['walker', 'runner', 'chemist'], 34]},
-    {t: 'collect', obj: 'Обыщите разграбленный «Дзержинец»', items: [{poi: 'mall', name: 'Батарейки', dx: 6, dy: 5}, {poi: 'mall', name: 'Бинты', dx: -8, dy: 4}, {poi: 'mall', name: 'Детская варежка', dx: 3, dy: -9}], spawn: ['mall', 7, ['walker', 'runner', 'chemist'], 30]},
+    {t: 'goto', poi: 'mall', r: 7, obj: 'Войдите в торговый центр «Дзержинец»', enter: 'mall', spawn: ['mall', 5, ['walker', 'runner'], 30]},
+    {t: 'collect', level: 'mall', obj: 'Обыщите «Дзержинец»: аптека, «Электроника», «Детский мир»', items: [{poi: 'm_apteka', name: 'Бинты'}, {poi: 'm_electro', name: 'Батарейки'}, {poi: 'm_kids', name: 'Детская варежка'}]},
+    {t: 'intro', level: 'mall', obj: 'Варежка', lines: [
+      D1(L, 'Красная варежка. Асина — мама вязала ей такие каждую зиму.'),
+      D1(L, 'Она была здесь, совсем недавно. Баба Нюра у входа наверняка что-то видела.')]},
+    {t: 'goto', level: 'mall', poi: 'm_exit', r: 3, obj: 'Выбирайтесь из «Дзержинца» к главному входу', exit: true},
     {t: 'talk', who: 'babka', obj: 'Поговорите с бабой Нюрой у «Дзержинца»', lines: [
-      D1('Баба Нюра', 'Варежка-то красненькая… Видала я её. Девчушка с фонариком и очкастый. Шли к бассейну «Заря», он там внутри всё запирал.'),
+      D1('Баба Нюра', 'Живой вышел, гляди-ка! Варежка-то красненькая… Видала я её. Девчушка с фонариком и очкастый. Шли к бассейну «Заря», он там внутри всё запирал.'),
       D1('Баба Нюра', 'Мертвяки воды боятся, что ли? Не знаю. Иди, иди, сынок.')], reward: {coins: 30}},
     {t: 'goto', poi: 'pool', r: 8, obj: 'Доберитесь до бассейна «Заря»', spawn: ['pool', 6, ['walker', 'runner'], 28]},
     {t: 'defend', poi: 'pool', r: 24, secs: 45, obj: 'Держитесь у бассейна, пока не стихнет', rate: 2.0, types: ['walker', 'runner', 'chemist']},
@@ -118,13 +123,13 @@ const CHAINS = [
       D1('Ася', '…'),
       D1('', 'На секунду в глазах Аси вспыхивает зелёный свет. Конец первой главы.')], reward: {coins: 300}}
   ]},
-  {id: 'side1', title: 'Самогон бабы Нюры', unlock: 12, steps: [
+  {id: 'side1', title: 'Самогон бабы Нюры', unlock: 15, steps: [
     {t: 'talk', who: 'babka', obj: 'Поговорите с бабой Нюрой', lines: [
       D1('Баба Нюра', 'Бугаи в трениках огня боятся пуще всего. Принеси три пустые бутылки с машин у «Дзержинца» — налью своего, крепкого, с тряпочкой.')]},
     {t: 'collect', obj: 'Соберите 3 бутылки у брошенных машин', items: [{poi: 'mall', name: 'Бутылка', dx: 14, dy: 10}, {poi: 'mall', name: 'Бутылка', dx: -15, dy: -6}, {poi: 'arch', name: 'Бутылка', dx: 6, dy: 6}], spawn: ['mall', 5, ['walker', 'runner'], 30]},
     {t: 'talk', who: 'babka', obj: 'Вернитесь к бабе Нюре', lines: [D1('Баба Нюра', 'Вот, держи. Не пей только — это для них.')], give: {weapon: 'obrez', ammo: 10, mol: 4}, reward: {coins: 60}}
   ]},
-  {id: 'side2', title: 'Тир в парке', unlock: 17, steps: [
+  {id: 'side2', title: 'Тир в парке', unlock: 20, steps: [
     {t: 'goto', poi: 'tir', r: 5, obj: 'Обыщите тир Центрального парка', lines: [D1('Тир', 'Под прилавком — коробка патронов и старая ТОЗ-8.')], give: {weapon: 'tozz', ammo: 25}, spawn: ['tir', 6, ['walker', 'frost'], 24]},
     {t: 'kill', n: 6, obj: 'Зачистите аллеи парка', zone: ['park', 110], spawn: ['park', 8, ['walker', 'runner', 'frost'], 40], reward: {coins: 80, ammo: 20}}
   ]}
@@ -138,6 +143,7 @@ const Quests = (function(){
   function trackedChain(){ const c = ch[tracked]; if (c && c.active && !c.done) return c; for (let i = 0; i < ch.length; i++) if (ch[i].active && !ch[i].done){ tracked = i; return ch[i]; } return null; }
   function stepTarget(c){
     const s = cur(c); if (!s) return null;
+    if (s.level && (!LEVEL || LEVEL.id !== s.level)) return pos('mall');
     if (s.t === 'talk'){ const n = npcs[s.who]; return n ? [n.x, n.y] : null; }
     if (s.t === 'intro') return null;
     if (s.t === 'choice') return pos(s.opts[0].poi);
@@ -176,6 +182,8 @@ const Quests = (function(){
   }
   function finishStep(c){
     const s = cur(c); if (!s) return;
+    if (s.enter) enterLevel(s.enter);
+    if (s.exit) leaveLevel();
     if (s.hide) s.hide.forEach(id => { if (npcs[id]){ npcs[id].hidden = true; npcs[id].follow = false; } });
     if (s.give){
       if (s.give.weapon) { giveWeapon(s.give.weapon, s.give.ammo || 0); toast('Получено: ' + WEAPONS[s.give.weapon].name); }
@@ -222,6 +230,7 @@ const Quests = (function(){
     for (const c of ch){
       if (!c.active || c.done) continue; const s = cur(c); if (!s) continue;
       if (!c.begun) beginStep(c);
+      if (s.level && (!LEVEL || LEVEL.id !== s.level)) continue;
       if (s.t === 'intro'){
         if (!c.said && !dlgLines){ c.said = true; say(s.lines, () => finishStep(c), s); }
       } else if (s.t === 'choice'){
@@ -281,6 +290,6 @@ const Quests = (function(){
   }
   function itemsToDraw(){ const out = []; ch.forEach(c => { if (c.active && !c.done) c.items.forEach(i => { if (!i.got) out.push(i); }); }); return out; }
   function defendInfo(){ const c = trackedChain(); if (!c) return null; const s = cur(c); return s && s.t === 'defend' ? {p: pos(s.poi), r: s.r} : null; }
-  return {update, interact, canInteract, onKill, onNpcDead, updateUI, targets, itemsToDraw, defendInfo, curType(){ const c = ch[0]; const s = c && cur(c); return s ? s.t : null; }, chains: ch, progressCount: () => completed, cycle(){ for (let k = 1; k <= ch.length; k++){ const i = (tracked + k)%ch.length; if (ch[i].active && !ch[i].done){ tracked = i; break; } } updateUI(); }, start(){ ch.forEach(c => { if (c.active) beginStep(c); }); updateUI(); }};
+  return {update, interact, canInteract, onKill, onNpcDead, updateUI, targets, itemsToDraw, defendInfo, levelWanted(){ for (const c of ch){ if (!c.active || c.done) continue; const s = cur(c); if (s && s.level) return s.level; } return null; }, curType(){ const c = ch[0]; const s = c && cur(c); return s ? s.t : null; }, chains: ch, progressCount: () => completed, cycle(){ for (let k = 1; k <= ch.length; k++){ const i = (tracked + k)%ch.length; if (ch[i].active && !ch[i].done){ tracked = i; break; } } updateUI(); }, start(){ ch.forEach(c => { if (c.active) beginStep(c); }); updateUI(); }};
 })();
 let flameLit = false;

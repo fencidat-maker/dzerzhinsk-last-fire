@@ -4,6 +4,7 @@ const $ = id => document.getElementById(id);
 // ---------------------------------------------------------------- collision
 const WB = WORLD.bounds;
 function blocked(x, y, r, ignoreOwn){
+  if (LEVEL) return levelBlocked(x, y, r);
   if (x < WB[0] + 4 || x > WB[2] - 4 || y < WB[1] + 4 || y > WB[3] - 4) return true;
   const nb = nearBuildings(x, y, r + 1);
   for (const b of nb){
@@ -25,6 +26,7 @@ function freeNear(x, y, r){
   return [x, y];
 }
 function losClear(x0, y0, x1, y1){
+  if (LEVEL) return levelLos(x0, y0, x1, y1);
   const d = Math.hypot(x1 - x0, y1 - y0), n = Math.ceil(d/1.2);
   for (let i = 1; i < n; i++){ const t = i/n, x = x0 + (x1 - x0)*t, y = y0 + (y1 - y0)*t; for (const b of nearBuildings(x, y, 1)){ if (b.top > 2.5 && x > b.minx && x < b.maxx && y > b.miny && y < b.maxy && inPoly(x, y, b.p)) return false; } }
   return true;
@@ -38,7 +40,7 @@ function stepTrack(e, ox, oy, stride){
   e.fpD = (e.fpD || 0) + d;
   if (e.fpD > stride){ e.fpD = 0; e.fpSide = -(e.fpSide || 1); if (e === hero) AUD.step(0.5); else if (e.T && (e.type === 'brute' || e.type === 'boss')) AUD.at('step' + ((Math.random()*6)|0), e.x, e.y, 0.55, 16, 0.7);
     const nx = -dy/d, ny = dx/d, o = 0.42*e.fpSide;
-    footprints.push({x: e.x + nx*o, y: e.y + ny*o, dx: dx/d, dy: dy/d, t: 0});
+    if (!LEVEL) footprints.push({x: e.x + nx*o, y: e.y + ny*o, dx: dx/d, dy: dy/d, t: 0});
     if (footprints.length > 500) footprints.splice(0, footprints.length - 500);
   }
 }
@@ -148,7 +150,7 @@ function updateZombies(dt){
     if (z.burn > 0){ z.burn -= dt; z.hp -= 18*dt; if (z.hp <= 0){ killZombie(z, i); continue; } }
     if (z.spawnT < 0.6){ z.spawnT += dt; }
     let mvx = 0, mvy = 0, sp = T.spd*SPD_S;
-    const chasing = !S.dead && (d < T.sight && (d < 9 || losClear(z.x, z.y, hero.x, hero.y)) || z.alert > 0 || z.boss);
+    const chasing = !S.dead && (d < T.sight*(LEVEL ? 0.45 : 1) && (d < 9 || losClear(z.x, z.y, hero.x, hero.y)) || z.alert > 0 || z.boss);
     if (z.alert > 0) z.alert -= dt;
     if (chasing){
       const l = d || 1; mvx = dx/l; mvy = dy/l;
@@ -209,7 +211,7 @@ function hurtHero(d, chill){
 // spawner
 function spawnTick(dt){
   spawnTick.t = (spawnTick.t || 0) - dt; if (spawnTick.t > 0) return; spawnTick.t = 0.45;
-  if (zombies.length >= zombieCap || S.dead) return;
+  if (zombies.length >= zombieCap || S.dead || LEVEL) return;
   for (let k = 0; k < 6; k++){
     const a = Math.random()*TAU, dist = 62 + Math.random()*40, x = hero.x + Math.cos(a)*dist, y = hero.y + Math.sin(a)*dist;
     if (blocked(x, y, 0.6)) continue;

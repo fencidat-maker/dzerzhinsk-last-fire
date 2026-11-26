@@ -95,7 +95,7 @@ const corpseDraw = (c, cp) => {
 // ---------------------------------------------------------------- frame
 let camX = 0, camY = 0, camInit = false;
 function render(){
-  cx.setTransform(1, 0, 0, 1, 0, 0); cx.fillStyle = '#c9b4c6'; cx.fillRect(0, 0, cv.width, cv.height);
+  cx.setTransform(1, 0, 0, 1, 0, 0); cx.fillStyle = LEVEL ? '#0e0a16' : '#c9b4c6'; cx.fillRect(0, 0, cv.width, cv.height);
   const hs = P(hero.x, hero.y, 0);
   let tx = hs[0] - VWu/2 + (hero.fx ? -hero.fx*0 : 0), ty = hs[1] - VHu*0.52;
   if (!camInit){ camX = tx; camY = ty; camInit = true; }
@@ -104,7 +104,7 @@ function render(){
   cx.setTransform(K, 0, 0, K, -cX*K, -cY*K);
   cx.imageSmoothingEnabled = true; cx.imageSmoothingQuality = 'high';
   const vx0 = cX, vy0 = cY, vx1 = cX + VWu, vy1 = cY + VHu;
-  drawTiles(cx, vx0 - 300, vy0 - 300, vx1 + 300, vy1 + 300, true);   // loads neighbours too
+  if (LEVEL) drawLevelBg(cx); else drawTiles(cx, vx0 - 300, vy0 - 300, vx1 + 300, vy1 + 300, true);   // loads neighbours too
   // footprints in the snow
   cx.save();
   for (const f of footprints){
@@ -174,7 +174,7 @@ function render(){
   drawArrows(cX, cY);
   if (tilesWaiting()){ cx.fillStyle = 'rgba(255,255,255,.7)'; cx.font = (12*DPR) + 'px system-ui'; cx.textAlign = 'center'; cx.fillText('Загрузка карты…', cv.width/2, cv.height - 20*DPR); }
 }
-function tilesWaiting(){ const hs = P(hero.x, hero.y, 0); return tilesIn(hs[0] - 50, hs[1] - 50, hs[0] + 50, hs[1] + 50).some(t => t.state !== 2); }
+function tilesWaiting(){ if (LEVEL) return !LEVEL.bgReady; const hs = P(hero.x, hero.y, 0); return tilesIn(hs[0] - 50, hs[1] - 50, hs[0] + 50, hs[1] + 50).some(t => t.state !== 2); }
 function drawArrows(cX, cY){
   const tg = Quests.targets(); const cxm = cv.width/2, cym = cv.height*0.52;
   tg.forEach(t => {
@@ -207,12 +207,13 @@ function drawMini(){
   const c = mmc, R = mm.width;
   c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, R, R); c.save(); c.beginPath(); c.arc(R/2, R/2, R/2 - 2, 0, TAU); c.clip(); c.fillStyle = '#28223a'; c.fillRect(0, 0, R, R);
   const hp = mmPos(hero.x, hero.y);
-  const WN = 170, k = bigMap ? R/(OVS[2]*0.78) : R/WN, ox = bigMap ? OVS[2]*0.11 : hp[0] - WN/2, oy = bigMap ? 2024*0.5 - OVS[2]*0.39 : hp[1] - WN/2;
+  const WN = LEVEL ? 95 : 170, k = bigMap ? R/(OVS[2]*0.78) : R/WN, ox = bigMap ? OVS[2]*0.11 : hp[0] - WN/2, oy = bigMap ? 2024*0.5 - OVS[2]*0.39 : hp[1] - WN/2;
   c.imageSmoothingQuality = 'high';
-  for (const t of MMT){ if (!t.im.complete || !t.im.naturalWidth) continue; const x = (t.x - ox)*k, y = (t.y - oy)*k, w = t.w*k, h = t.h*k; if (x > R || y > R || x + w < 0 || y + h < 0) continue; c.drawImage(t.im, x, y, w + 0.5, h + 0.5); }
   const toM = (x, y) => { const p = mmPos(x, y); return [(p[0] - ox)*k, (p[1] - oy)*k]; };
+  if (LEVEL) drawLevelMini(c, toM, R); else
+  for (const t of MMT){ if (!t.im.complete || !t.im.naturalWidth) continue; const x = (t.x - ox)*k, y = (t.y - oy)*k, w = t.w*k, h = t.h*k; if (x > R || y > R || x + w < 0 || y + h < 0) continue; c.drawImage(t.im, x, y, w + 0.5, h + 0.5); }
   c.font = '600 ' + Math.round((bigMap ? 10 : 8.5)*DPR) + 'px Georgia, serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
-  for (const L of MM_LAB){ const p = POI[L[0]]; if (!p || (bigMap && L[2])) continue; const q = toM(p[0], p[1]); if (q[0] < -40 || q[0] > R + 40 || q[1] < -10 || q[1] > R + 10) continue;
+  if (!LEVEL) for (const L of MM_LAB){ const p = POI[L[0]]; if (!p || (bigMap && L[2])) continue; const q = toM(p[0], p[1]); if (q[0] < -40 || q[0] > R + 40 || q[1] < -10 || q[1] > R + 10) continue;
     c.lineWidth = 3*DPR; c.strokeStyle = 'rgba(28,20,40,.9)'; c.strokeText(L[1], q[0], q[1]); c.fillStyle = '#ffe2a0'; c.fillText(L[1], q[0], q[1]); }
   Quests.targets().forEach(t => {
     const p = toM(t.x, t.y), col = t.main ? '#ffd36a' : '#9ad4ff', cxm = R/2, cym = R/2;
@@ -262,6 +263,7 @@ function uiBlock(){ return !!dlgLines || !running; }
 function interact(){ if (dlgLines){ nextLine(); return; } if (Quests.interact()) return; }
 function onDeath(){ $('dead').style.display = 'flex'; input.x = input.y = 0; input.fire = false; }
 function respawn(){
+  if (LEVEL) leaveLevel(true);
   $('dead').style.display = 'none'; S.dead = false; S.hp = S.maxHp; S.coins = Math.floor(S.coins*0.8); const p = freeNear(POI.flame[0] + 6, POI.flame[1] - 6, 0.5); hero.x = p[0]; hero.y = p[1]; zombies.length = 0; spawnQuestZombies();
   hud();
 }
@@ -329,7 +331,7 @@ function frame(ts){
   const dt = Math.min(0.05, (ts - last)/1000 || 0.016); last = ts; dtLast = dt; time += dt;
   if (running){
     if (!dlgLines && !slidesOn){
-      updateHero(dt); updateZombies(dt); updateNpcs(dt); updateBullets(dt); updatePickups(dt); spawnTick(dt); Quests.update(dt);
+      levelTick(); updateHero(dt); updateZombies(dt); updateNpcs(dt); updateBullets(dt); updatePickups(dt); spawnTick(dt); Quests.update(dt);
       zombieCap = 12 + Math.min(10, Math.floor(Quests.progressCount()/2));
       S.stamina = Math.max(0, Math.min(100, S.stamina)); elSt.style.width = S.stamina + '%';
       for (const cp of corpses) cp.t += dt; for (const f of footprints) f.t += dt; while (footprints.length && footprints[0].t > 40) footprints.shift();
@@ -348,4 +350,4 @@ $('go').addEventListener('click', () => {
   try { const w = window.Telegram.WebApp; w.ready(); w.expand(); if (w.disableVerticalSwipes) w.disableVerticalSwipes(); } catch (_) {}
 });
 requestAnimationFrame(frame);
-window.__dbg = {AUD, colMask, nearestFire, CM, hero, S, zombies, Quests, tiles, P, POI, blocked, occludersOf, input, freeNear, npcs, bullets, pickups, giveWeapon, makeZombie, nextLine, interact, killZombie, hud, get dlg(){ return dlgLines; }, get zlist(){ return zombies; }, step(dt){ updateHero(dt); updateZombies(dt); updateNpcs(dt); updateBullets(dt); updatePickups(dt); Quests.update(dt); }};
+window.__dbg = {AUD, enterLevel, leaveLevel, LEVELS, get LEVEL(){ return LEVEL; }, colMask, nearestFire, CM, hero, S, zombies, Quests, tiles, P, POI, blocked, occludersOf, input, freeNear, npcs, bullets, pickups, giveWeapon, makeZombie, nextLine, interact, killZombie, hud, get dlg(){ return dlgLines; }, get zlist(){ return zombies; }, step(dt){ updateHero(dt); updateZombies(dt); updateNpcs(dt); updateBullets(dt); updatePickups(dt); Quests.update(dt); }};

@@ -61,7 +61,7 @@ const AUD = (function(){
     for (const f of fires){ const d = Math.hypot(f.x - hero.x, f.y - hero.y) - 2; if (d < fd) fd = d; }
     if (flameLit && POI.flame){ const d = Math.hypot(POI.flame[0] - hero.x, POI.flame[1] - hero.y) - 3; if (d < fd) fd = d; }
     if (fireG) fireG.gain.setTargetAtTime(0.75*Math.max(0, 1 - Math.max(0, fd)/22), t, 0.3);
-    if (windG) windG.gain.setTargetAtTime(0.16 + 0.12*Math.max(0, Math.min(1, (fd - 10)/30)), t, 0.8);
+    if (windG) windG.gain.setTargetAtTime(LEVEL ? 0.03 : 0.16 + 0.12*Math.max(0, Math.min(1, (fd - 10)/30)), t, 0.8);
     // zombie moans
     moanT -= dt;
     if (moanT <= 0 && zombies.length){
