@@ -76,7 +76,7 @@ html,body{margin:0;height:100%;background:#1c1828;overflow:hidden;touch-action:n
 <div id="dead"><div class="c"><h1>Вы погибли</h1><p>Огонь ещё горит. Вы очнётесь у Вечного огня и потеряете часть денег.</p><button id="rs">Возродиться</button></div></div>
 <div id="start"><div class="c">
 <h1>Последний огонь Дзержинска</h1>
-<p>Лёва Сомов возвращается в родной город за сестрой. Город мёртв, по дворам бродят ходячие, а военные обещают сжечь центр через две ночи.</p>
+<p>Лёва Сомов возвращается в родной город за младшей сестрой. После аварии на химзаводе мёртвые встали, город оцеплен, и живые держатся только у огня.</p>
 <p>Мертвецы боятся огня и света и идут на шум. Держитесь костров.</p>
 <p>Выполняйте задания, ищите оружие, отбивайтесь от зомби. Левая половина экрана — джойстик, справа кнопки: «Огонь» (автонаведение), «Действие», перезарядка, смена оружия, аптечка.</p>
 <button id="go">Начать</button></div></div>
@@ -192,6 +192,39 @@ function nearBuildingsRect(x0, y0, x1, y1){
   const out = new Set();
   for (let gx = Math.floor(x0/GC); gx <= Math.floor(x1/GC); gx++) for (let gy = Math.floor(y0/GC); gy <= Math.floor(y1/GC); gy++){ const l = GRID.get(gkey(gx + 100, gy + 100)); if (l) l.forEach(b => out.add(b)); }
   return out;
+}
+
+// ---------------------------------------------------------------- painted-obstacle collision (cars, barricades, fences, props)
+// Masks are 1/4-res bitmaps in un-mirrored tile pixel space, detected from the stop-motion tiles (col/detect.py).
+const CM = {tiles: [], ready: false};
+function initColMasks(meta){
+  let left = meta.length;
+  meta.forEach(m => {
+    const im = new Image(); im.src = 'cm/' + m[0] + '_' + m[1] + '.png';
+    im.onload = () => {
+      const c = document.createElement('canvas'); c.width = im.width; c.height = im.height;
+      const x = c.getContext('2d'); x.drawImage(im, 0, 0); const d = x.getImageData(0, 0, im.width, im.height).data;
+      const bits = new Uint8Array(im.width*im.height); for (let k = 0; k < bits.length; k++) bits[k] = d[k*4] > 127 ? 1 : 0;
+      CM.tiles.push({x0: m[2], y0: m[3], w: im.width, h: im.height, k: im.width/2048, bits});
+      if (--left === 0){ CM.ready = true; if (typeof onColReady === 'function') onColReady(); }
+    };
+    im.onerror = () => { if (--left === 0){ CM.ready = true; if (typeof onColReady === 'function') onColReady(); } };
+  });
+}
+function colAtP(px, py){
+  for (const t of CM.tiles){
+    const u = Math.floor((-px - t.x0)*t.k), v = Math.floor((py - t.y0)*t.k);
+    if (u < 2 || v < 2 || u >= t.w - 2 || v >= t.h - 2) continue;   // skip feathered border
+    if (t.bits[v*t.w + u]) return true;
+  }
+  return false;
+}
+function colMask(x, y, r){
+  if (!CM.tiles.length) return false;
+  const p = P(x, y, 0); if (colAtP(p[0], p[1])) return true;
+  const rr = r*0.85;
+  for (let a = 0; a < 4; a++){ const q = P(x + Math.cos(a*1.5708)*rr, y + Math.sin(a*1.5708)*rr, 0); if (colAtP(q[0], q[1])) return true; }
+  return false;
 }
 
 // ---------------------------------------------------------------- audio: generated samples + music
@@ -364,6 +397,7 @@ function blocked(x, y, r, ignoreOwn){
     const p = b.p;
     for (let i = 0; i < p.length; i++){ const q = p[(i + 1)%p.length]; if (distSeg(x, y, p[i][0], p[i][1], q[0], q[1]) < r) return true; }
   }
+  if (colMask(x, y, r)) return true;
   for (const o of objsInRect(x - 3, y - 3, x + 3, y + 3)){
     if (o.dead || !o.r || o.t === 'lamp' || o === ignoreOwn) continue;
     if (Math.hypot(x - o.x, y - o.y) < r + o.r) return true;
@@ -400,6 +434,7 @@ function moveEntity(e, dx, dy, r){
   if (!blocked(e.x, ny, r)){ e.y = ny; return true; }
   const l = Math.hypot(dx, dy) || 1;
   for (const a of [0.6, -0.6, 1.2, -1.2]){ const ca = Math.cos(a), sa = Math.sin(a); const rx = e.x + (dx*ca - dy*sa), ry = e.y + (dx*sa + dy*ca); if (!blocked(rx, ry, r)){ e.x = rx; e.y = ry; return true; } }
+  if (colMask(e.x, e.y, r*0.5)){ e.x = nx; e.y = ny; return true; }   // stuck inside a painted prop: let it walk out
   return false;
 }
 
@@ -476,6 +511,19 @@ function makeZombie(type, x, y){
   zombies.push(z); return z;
 }
 function screenDirOf(wx, wy){ const a = P(wx, wy, 0), b = P(0, 0, 0), dx = a[0] - b[0], dy = a[1] - b[1]; return Math.abs(dx) > Math.abs(dy)*1.15 ? (dx > 0 ? 'r' : 'l') : (dy > 0 ? 'd' : 'u'); }
+function fireList(){
+  const L = [];
+  if (typeof FIRES !== 'undefined'){ if (!firesInit) initFires(); for (const f of FIRES) L.push({x: f.wx, y: f.wy, R: 3.2 + Math.min(3, (f.s || 20)/18)}); }
+  for (const f of fires) L.push({x: f.x, y: f.y, R: 3.2});
+  if (flameLit) L.push({x: POI.flame[0], y: POI.flame[1], R: 6});
+  return L;
+}
+let FIRE_CACHE = null, FIRE_CACHE_T = -1;
+function nearestFire(x, y){
+  if (FIRE_CACHE_T !== time){ FIRE_CACHE = fireList(); FIRE_CACHE_T = time; }
+  let best = null, bd = 1e9; for (const f of FIRE_CACHE){ const d = Math.hypot(x - f.x, y - f.y) - f.R; if (d < bd){ bd = d; best = f; } }
+  return bd < 4 ? best : null;
+}
 function updateZombies(dt){
   for (let i = zombies.length - 1; i >= 0; i--){
     const z = zombies[i], T = z.T;
@@ -495,6 +543,21 @@ function updateZombies(dt){
       z.wander -= dt; if (z.wander <= 0){ z.wander = 2 + Math.random()*4; z.wa = Math.random()*TAU; z.still = Math.random() < 0.35; }
       if (!z.still){ mvx = Math.cos(z.wa); mvy = Math.sin(z.wa); sp *= 0.4; }
     }
+    // fear of fire: zombies stop at the edge of firelight; frenzied wave zombies push in but burn
+    { const f = nearestFire(z.x, z.y);
+      if (f && !z.boss){
+        const fx = z.x - f.x, fy = z.y - f.y, fd = Math.hypot(fx, fy) || 0.01, edge = f.R + 2.5;
+        if (fd < edge){
+          let wgt = Math.min(1, (edge - fd)/2.5); if (z.frenzy) wgt *= 0.3;
+          const ax = fx/fd, ay = fy/fd, toward = mvx*(-ax) + mvy*(-ay);
+          if (toward > 0){ mvx += ax*toward*wgt*1.6; mvy += ay*toward*wgt*1.6; }   // cancel the step into the fire
+          if (fd < f.R){ mvx += ax*wgt*1.4; mvy += ay*wgt*1.4; if (!z.frenzy) sp = Math.max(sp, T.spd*1.1); }
+          if (fd < f.R*0.7){ z.burn = Math.max(z.burn || 0, 0.6); }
+          z.scared = 0.4;
+        }
+      }
+    }
+    if (z.scared > 0) z.scared -= dt;
     if (z.kb > 0){ z.kb -= dt; mvx = z.kvx; mvy = z.kvy; sp = 6*z.kb/0.2; }
     if (mvx || mvy){
       const ox = z.x, oy = z.y; moveEntity(z, mvx*sp*dt, mvy*sp*dt, T.r); stepTrack(z, ox, oy, 1.8);
@@ -830,11 +893,11 @@ const CHAINS = [
     // ---- Prologue
     {t: 'intro', ch: CH1, obj: 'Прослушайте голосовое от Аси', lines: [
       D1('Голосовое · Ася', 'Лёва… если ты это слышишь — я в ДКХ, тут свет. Папы больше нет. Не приходи ночью, слышишь? Они идут на шум…'),
-      D1(L, 'Троллейбус встал прямо на площади Героев. Шесть лет я сюда не приезжал. Ася, держись.'),
+      D1(L, 'Шесть лет я здесь не был. Площадь Героев… Ася, держись, я уже близко.'),
       D1(L, 'Там, у Вечного огня, кто-то жжёт костры. Значит, живые.')]},
     {t: 'goto', poi: 'flame', r: 9, obj: 'Идите к огню на площади Героев', spawn: ['flame', 3, ['walker'], 30]},
     {t: 'talk', who: 'dvornik', obj: 'Поговорите с дворником Леонтьичем', lines: [
-      D1('Леонтьич', 'Сомов? Лёвка?! Вырос… Слушай правила, раз вернулся. Они боятся огня и света. И идут на любой громкий звук.'),
+      D1('Леонтьич', 'Сомов? Лёвка?! Вырос… Слушай правила, раз вернулся. Огня они боятся — к костру не подходят. Но идут на любой громкий звук, а голодной толпой лезут и в огонь.'),
       D1('Леонтьич', 'Днём ещё можно ходить. Ночью — только от костра к костру. На, монтировку держи. Стрелять будешь — сбежится весь квартал.')], give: {weapon: 'crowbar'}},
     {t: 'kill', n: 5, obj: 'Отбейте лагерь у Вечного огня', zone: ['flame', 70], spawn: ['flame', 6, ['walker'], 30]},
     {t: 'talk', who: 'dvornik', obj: 'Вернитесь к Леонтьичу', lines: [
@@ -1032,7 +1095,7 @@ const Quests = (function(){
       } else if (s.t === 'defend'){
         const p = pos(s.poi), inz = Math.hypot(hero.x - p[0], hero.y - p[1]) < s.r;
         if (inz){ c.t += dt; c.spT = (c.spT || 0) - dt;
-          if (c.spT <= 0 && zombies.length < 22){ c.spT = s.rate; spawnRing(s.poi, 1, s.types, s.r*1.5, c.def.id); const z = zombies[zombies.length - 1]; if (z){ z.alert = 20; z.still = false; z.keep = false; } }
+          if (c.spT <= 0 && zombies.length < 22){ c.spT = s.rate; spawnRing(s.poi, 1, s.types, s.r*1.5, c.def.id); const z = zombies[zombies.length - 1]; if (z){ z.alert = 20; z.still = false; z.keep = false; z.frenzy = true; } }
         }
         c.prog = Math.min(s.secs, c.t);
         if (c.t >= s.secs){ zombies.forEach(z => { if (z.questTag === c.def.id) z.hp = 0; }); finishStep(c); }
@@ -1082,57 +1145,64 @@ let flameLit = false;
 // ---------------------------------------------------------------- slideshow: intro + story cutscenes
 const SCENES = {
   intro: [
-    ['i0', 'Дзержинск. Город химиков на Оке. Трубы заводов, панельки, площадь Героев с Вечным огнём. Зима.'],
-    ['i1', 'Шесть лет назад Лёва Сомов уехал отсюда и не оглянулся. На перроне остались отец и младшая сестра Ася в красном пальто.'],
-    ['i2', 'Две недели назад на заводе случилась авария. Ночью над городом прошёл зелёный туман. Об этом сказали один раз в новостях, а потом не говорили больше ничего.'],
-    ['i3', 'На третий день мёртвые встали. Город закрыли кордоном. Связь пропала.'],
-    ['i4', 'Последнее голосовое от Аси пришло неделю назад. Лёва слушал его в поезде до самой Москвы, а потом сошёл и поехал обратно.'],
-    ['i5', 'Последний троллейбус встал на площади Героев. Дальше пешком. Пока горит огонь, кто-то ещё жив.']
+    ['i0', 'Дзержинск — город химиков на Оке. Заводские трубы, пятиэтажки, площадь Героев с Вечным огнём. Здесь Лёва Сомов родился и вырос.'],
+    ['i1', 'Шесть лет назад он поссорился с отцом и уехал. На перроне остались двое: отец и сестрёнка Ася в красном пальто. Ей тогда было десять.'],
+    ['i2', 'Две недели назад на химзаводе случилась авария. Ночью над городом прошёл зелёный туман. В новостях о нём сказали один раз — и замолчали.'],
+    ['i3', 'На третий день умершие поднялись. Город оцепили военные, связь оборвалась, а эвакуация захлебнулась в первую же ночь.'],
+    ['i4', 'Неделю назад Лёве пришло голосовое от Аси. Последнее. Он сел в первый же поезд, хотя знал: дальше кордона поезда не идут.'],
+    ['i5', 'Ночью он прошёл через оцепление вдоль железной дороги и вышел к площади Героев. Брошенный троллейбус, тишина — а у Вечного огня горят костры. Значит, кто-то ещё жив.']
   ],
   radio: [
-    ['c_radio', 'Крыша дома со шпилем. Тимка уже третьи сутки не выпускает из рук рацию: ловит всё, что ещё звучит в эфире.']
+    ['c_radio', 'Крыша дома со шпилем. Тимка третьи сутки не выпускает из рук рацию и ловит всё, что ещё звучит в эфире.']
   ],
   column: [
-    ['c_column', 'Ночью по объездной прошла колонна: техника, люди в противогазах, прожекторы. Город стали обводить по кругу.'],
-    ['c_column', 'До зачистки две ночи. Колонна эвакуации пойдёт без него, а Лёва повернул к центру.']
+    ['c_column', 'Ночью по объездной прошла военная колонна: грузовики, прожекторы, люди в противогазах. Кольцо вокруг города сжимается.'],
+    ['c_column', 'До зачистки осталось две ночи. Колонна эвакуации уйдёт без Лёвы: он поворачивает к центру, за сестрой.']
   ],
   dkh: [
-    ['c_dkh', 'ДКХ. Дворец, где Ася когда-то танцевала на новогодних ёлках. На паркете тёплый фонарь, рядом магнитофон с кассетой.']
+    ['c_dkh', 'Дворец культуры химиков. Здесь Ася когда-то плясала на новогодних ёлках. На паркете — её фонарь, ещё тёплый, и магнитофон с кассетой.']
   ],
   leontich: [
-    ['c_leontich', 'Леонтьич до последнего подкидывал дрова в огонь. До рассвета он не дожил.'],
-    ['c_leontich', 'Ася сидела рядом и держала его за руку. «Огонь не должен погаснуть», — это было последнее, что он сказал.']
+    ['c_leontich', 'Всю ночь Леонтьич подбрасывал дрова в огонь. До рассвета он не дожил.'],
+    ['c_leontich', 'Ася держала его за руку до конца. «Огонь не должен погаснуть» — это были его последние слова.']
   ],
   endA: [
-    ['end_a', 'Грузовик уходил по объездной на запад. Ася смотрела назад, пока огни Дзержинска не скрылись в снегу.'],
-    ['end_a', 'Сыворотку сделают. Лёва пообещал приехать и в этот раз собирался сдержать слово.']
+    ['end_a', 'Грузовик уходил по объездной на запад. Ася смотрела назад, пока огни Дзержинска не растворились в снегу.'],
+    ['end_a', 'Из её крови сделают сыворотку. Лёва пообещал приехать — и на этот раз собирался сдержать слово.']
   ],
   endB: [
-    ['end_b', 'Арка Центрального парка. За ней Ока, пристань и лодки. Позади город, который должен сгореть на рассвете.'],
+    ['end_b', 'Арка Центрального парка. За ней — Ока, пристань и лодки. Позади — город, который сгорит на рассвете.'],
     ['end_b', 'Двое уходят по снегу и не оглядываются. Огонь на площади Героев ещё горит.']
   ],
   epi: [
-    ['epi', 'Рассвет. Ася смеётся впервые за много дней…'],
-    ['epi', '…и на секунду в её глазах вспыхивает зелёный свет.']
+    ['epi', 'Рассвет. Впервые за много дней Ася смеётся…'],
+    ['epi', '…и на мгновение в её глазах вспыхивает зелёный свет.']
   ]
 };
 let slidesOn = false;
 const SLIDE_CACHE = {};
-function preloadScene(name){ (SCENES[name] || []).forEach(s => { if (!SLIDE_CACHE[s[0]]){ const im = new Image(); im.src = 'slides/' + s[0] + '.webp'; SLIDE_CACHE[s[0]] = im; } }); }
+function preloadScene(name, hi){ (SCENES[name] || []).forEach(s => { if (!SLIDE_CACHE[s[0]]){ const im = new Image(); if (hi) im.fetchPriority = 'high'; im.decoding = 'async'; im.src = 'slides/' + s[0] + '.webp'; SLIDE_CACHE[s[0]] = im; } }); }
+preloadScene('intro', true);   // start fetching the intro while the title screen is shown
 function playSlides(name, cb){
   const list = SCENES[name]; if (!list || !list.length){ cb && cb(); return; }
   if (window.__fastSlides){ (window.__scenes = window.__scenes || []).push(name); slidesOn = false; cb && cb(); return; }
-  preloadScene(name);
+  preloadScene(name, true);
   const el = document.getElementById('sl'), A = el.querySelector('.sla'), B = el.querySelector('.slb'), tx = el.querySelector('.slt'), dots = el.querySelector('.sld');
   slidesOn = true; input.x = input.y = 0; input.fire = false; el.style.display = 'block'; requestAnimationFrame(() => el.classList.add('on'));
   let i = -1, front = A, back = B, typer = 0, full = '', shown = 0, done = false;
   function type(){ clearInterval(typer); shown = 0; tx.textContent = ''; typer = setInterval(() => { shown += 2; tx.textContent = full.slice(0, shown); if (shown >= full.length) clearInterval(typer); }, 28); }
   function show(k){
     i = k; const s = list[i];
-    const img = back; img.style.backgroundImage = 'url(slides/' + s[0] + '.webp)';
-    img.classList.remove('kb0', 'kb1'); void img.offsetWidth; img.classList.add(i%2 ? 'kb1' : 'kb0');
-    img.style.opacity = 1; front.style.opacity = 0; const t = front; front = back; back = t;
+    const img = back, ki = i; const t = front; front = back; back = t;
     full = s[1]; type();
+    const reveal = () => { if (done || i !== ki) return;
+      img.style.backgroundImage = 'url(slides/' + s[0] + '.webp)';
+      img.classList.remove('kb0', 'kb1'); void img.offsetWidth; img.classList.add(ki%2 ? 'kb1' : 'kb0');
+      img.style.opacity = 1; t.style.opacity = 0; };
+    const im = SLIDE_CACHE[s[0]];
+    if (im && im.complete && im.naturalWidth) reveal();
+    else if (im){ im.addEventListener('load', reveal, {once: true}); im.addEventListener('error', reveal, {once: true}); }
+    else reveal();
     dots.innerHTML = list.map((_, j) => '<i' + (j === i ? ' class="on"' : '') + '></i>').join('');
   }
   function next(){
@@ -1448,7 +1518,13 @@ document.addEventListener('contextmenu', e => e.preventDefault());
 
 // ---------------------------------------------------------------- loop
 let last = 0, dtLast = 0.016;
+function onColReady(){   // painted-obstacle masks arrived: push anything standing inside a prop to the nearest free spot
+  const fix = e => { if (e && blocked(e.x, e.y, 0.45)){ const p = freeNear(e.x, e.y, 0.45); e.x = p[0]; e.y = p[1]; } };
+  fix(hero); for (const k in npcs) fix(npcs[k]); zombies.forEach(fix);
+  for (const k in POI){ if (blocked(POI[k][0], POI[k][1], 0.6)){ const p = freeNear(POI[k][0], POI[k][1], 0.7); POI[k] = [p[0], p[1]]; } }
+}
 function init(){
+  initColMasks(TILEMETA);
   for (const k in POI){ const p = freeNear(POI[k][0], POI[k][1], 0.7); POI[k] = [p[0], p[1]]; }
   for (const k in NPCDEF){ const d = NPCDEF[k]; const n = addNpc(k, d.name, NPC_PAL[d.pal], POI[d.pos][0] + 2, POI[d.pos][1] + 2); n.sheet = k; n.hidden = !!d.hidden; }
   const p = freeNear(POI.flame[0] + 14, POI.flame[1] + 10, 0.5); hero.x = p[0]; hero.y = p[1]; safeX = POI.flame[0]; safeY = POI.flame[1];
@@ -1473,11 +1549,11 @@ function frame(ts){
   requestAnimationFrame(frame);
 }
 $('go').addEventListener('click', () => {
-  $('start').style.display = 'none'; AUD.init(); running = true; init(); slidesOn = true; playSlides('intro', () => { toast('Идите на свет костров у Вечного огня', 4); });
+  $('start').style.display = 'none'; AUD.init(); running = true; init(); slidesOn = true; playSlides('intro', () => { toast('Идите на свет костров у Вечного огня', 4); for (const k in SCENES) preloadScene(k); });
   try { const w = window.Telegram.WebApp; w.ready(); w.expand(); if (w.disableVerticalSwipes) w.disableVerticalSwipes(); } catch (_) {}
 });
 requestAnimationFrame(frame);
-window.__dbg = {AUD, hero, S, zombies, Quests, tiles, P, POI, blocked, occludersOf, input, freeNear, npcs, bullets, pickups, giveWeapon, makeZombie, nextLine, interact, killZombie, hud, get dlg(){ return dlgLines; }, get zlist(){ return zombies; }, step(dt){ updateHero(dt); updateZombies(dt); updateNpcs(dt); updateBullets(dt); updatePickups(dt); Quests.update(dt); }};
+window.__dbg = {AUD, colMask, nearestFire, CM, hero, S, zombies, Quests, tiles, P, POI, blocked, occludersOf, input, freeNear, npcs, bullets, pickups, giveWeapon, makeZombie, nextLine, interact, killZombie, hud, get dlg(){ return dlgLines; }, get zlist(){ return zombies; }, step(dt){ updateHero(dt); updateZombies(dt); updateNpcs(dt); updateBullets(dt); updatePickups(dt); Quests.update(dt); }};
 
 // ---------------------------------------------------------------- living fire + flickering light
 // FIRES: painted bonfires/barrels found on the map tiles (P-space x,y at flame base, s = flame size in P units)

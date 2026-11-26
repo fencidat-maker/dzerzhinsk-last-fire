@@ -10,7 +10,7 @@ import math
 m=meta[0]; SMINX=m[2]-m[0]*1830+100; SMINY=m[3]-m[1]*1215+300
 ovs=json.dumps([SMINX,SMINY,2988,0.2])
 js=''
-for f in ('rt_core.js','audio.js','chars.js','game_rt.js','puppet.js','quests.js','slides.js','main.js','fx.js'):
+for f in ('rt_core.js','col.js','audio.js','chars.js','game_rt.js','puppet.js','quests.js','slides.js','main.js','fx.js'):
     s=open(f).read()
     if f=='rt_core.js': s=s.replace('__WORLD__',wj)
     if f=='main.js': s=s.replace('__TILES__',tiles).replace('__OVS__',ovs).replace('__MMT__',open('mm/tiles.json').read())

@@ -36,11 +36,11 @@ const CHAINS = [
     // ---- Prologue
     {t: 'intro', ch: CH1, obj: 'Прослушайте голосовое от Аси', lines: [
       D1('Голосовое · Ася', 'Лёва… если ты это слышишь — я в ДКХ, тут свет. Папы больше нет. Не приходи ночью, слышишь? Они идут на шум…'),
-      D1(L, 'Троллейбус встал прямо на площади Героев. Шесть лет я сюда не приезжал. Ася, держись.'),
+      D1(L, 'Шесть лет я здесь не был. Площадь Героев… Ася, держись, я уже близко.'),
       D1(L, 'Там, у Вечного огня, кто-то жжёт костры. Значит, живые.')]},
     {t: 'goto', poi: 'flame', r: 9, obj: 'Идите к огню на площади Героев', spawn: ['flame', 3, ['walker'], 30]},
     {t: 'talk', who: 'dvornik', obj: 'Поговорите с дворником Леонтьичем', lines: [
-      D1('Леонтьич', 'Сомов? Лёвка?! Вырос… Слушай правила, раз вернулся. Они боятся огня и света. И идут на любой громкий звук.'),
+      D1('Леонтьич', 'Сомов? Лёвка?! Вырос… Слушай правила, раз вернулся. Огня они боятся — к костру не подходят. Но идут на любой громкий звук, а голодной толпой лезут и в огонь.'),
       D1('Леонтьич', 'Днём ещё можно ходить. Ночью — только от костра к костру. На, монтировку держи. Стрелять будешь — сбежится весь квартал.')], give: {weapon: 'crowbar'}},
     {t: 'kill', n: 5, obj: 'Отбейте лагерь у Вечного огня', zone: ['flame', 70], spawn: ['flame', 6, ['walker'], 30]},
     {t: 'talk', who: 'dvornik', obj: 'Вернитесь к Леонтьичу', lines: [
@@ -238,7 +238,7 @@ const Quests = (function(){
       } else if (s.t === 'defend'){
         const p = pos(s.poi), inz = Math.hypot(hero.x - p[0], hero.y - p[1]) < s.r;
         if (inz){ c.t += dt; c.spT = (c.spT || 0) - dt;
-          if (c.spT <= 0 && zombies.length < 22){ c.spT = s.rate; spawnRing(s.poi, 1, s.types, s.r*1.5, c.def.id); const z = zombies[zombies.length - 1]; if (z){ z.alert = 20; z.still = false; z.keep = false; } }
+          if (c.spT <= 0 && zombies.length < 22){ c.spT = s.rate; spawnRing(s.poi, 1, s.types, s.r*1.5, c.def.id); const z = zombies[zombies.length - 1]; if (z){ z.alert = 20; z.still = false; z.keep = false; z.frenzy = true; } }
         }
         c.prog = Math.min(s.secs, c.t);
         if (c.t >= s.secs){ zombies.forEach(z => { if (z.questTag === c.def.id) z.hp = 0; }); finishStep(c); }

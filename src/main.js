@@ -294,7 +294,13 @@ document.addEventListener('contextmenu', e => e.preventDefault());
 
 // ---------------------------------------------------------------- loop
 let last = 0, dtLast = 0.016;
+function onColReady(){   // painted-obstacle masks arrived: push anything standing inside a prop to the nearest free spot
+  const fix = e => { if (e && blocked(e.x, e.y, 0.45)){ const p = freeNear(e.x, e.y, 0.45); e.x = p[0]; e.y = p[1]; } };
+  fix(hero); for (const k in npcs) fix(npcs[k]); zombies.forEach(fix);
+  for (const k in POI){ if (blocked(POI[k][0], POI[k][1], 0.6)){ const p = freeNear(POI[k][0], POI[k][1], 0.7); POI[k] = [p[0], p[1]]; } }
+}
 function init(){
+  initColMasks(TILEMETA);
   for (const k in POI){ const p = freeNear(POI[k][0], POI[k][1], 0.7); POI[k] = [p[0], p[1]]; }
   for (const k in NPCDEF){ const d = NPCDEF[k]; const n = addNpc(k, d.name, NPC_PAL[d.pal], POI[d.pos][0] + 2, POI[d.pos][1] + 2); n.sheet = k; n.hidden = !!d.hidden; }
   const p = freeNear(POI.flame[0] + 14, POI.flame[1] + 10, 0.5); hero.x = p[0]; hero.y = p[1]; safeX = POI.flame[0]; safeY = POI.flame[1];
@@ -319,8 +325,8 @@ function frame(ts){
   requestAnimationFrame(frame);
 }
 $('go').addEventListener('click', () => {
-  $('start').style.display = 'none'; AUD.init(); running = true; init(); slidesOn = true; playSlides('intro', () => { toast('Идите на свет костров у Вечного огня', 4); });
+  $('start').style.display = 'none'; AUD.init(); running = true; init(); slidesOn = true; playSlides('intro', () => { toast('Идите на свет костров у Вечного огня', 4); for (const k in SCENES) preloadScene(k); });
   try { const w = window.Telegram.WebApp; w.ready(); w.expand(); if (w.disableVerticalSwipes) w.disableVerticalSwipes(); } catch (_) {}
 });
 requestAnimationFrame(frame);
-window.__dbg = {AUD, hero, S, zombies, Quests, tiles, P, POI, blocked, occludersOf, input, freeNear, npcs, bullets, pickups, giveWeapon, makeZombie, nextLine, interact, killZombie, hud, get dlg(){ return dlgLines; }, get zlist(){ return zombies; }, step(dt){ updateHero(dt); updateZombies(dt); updateNpcs(dt); updateBullets(dt); updatePickups(dt); Quests.update(dt); }};
+window.__dbg = {AUD, colMask, nearestFire, CM, hero, S, zombies, Quests, tiles, P, POI, blocked, occludersOf, input, freeNear, npcs, bullets, pickups, giveWeapon, makeZombie, nextLine, interact, killZombie, hud, get dlg(){ return dlgLines; }, get zlist(){ return zombies; }, step(dt){ updateHero(dt); updateZombies(dt); updateNpcs(dt); updateBullets(dt); updatePickups(dt); Quests.update(dt); }};

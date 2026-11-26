@@ -12,6 +12,7 @@ function blocked(x, y, r, ignoreOwn){
     const p = b.p;
     for (let i = 0; i < p.length; i++){ const q = p[(i + 1)%p.length]; if (distSeg(x, y, p[i][0], p[i][1], q[0], q[1]) < r) return true; }
   }
+  if (colMask(x, y, r)) return true;
   for (const o of objsInRect(x - 3, y - 3, x + 3, y + 3)){
     if (o.dead || !o.r || o.t === 'lamp' || o === ignoreOwn) continue;
     if (Math.hypot(x - o.x, y - o.y) < r + o.r) return true;
@@ -48,6 +49,7 @@ function moveEntity(e, dx, dy, r){
   if (!blocked(e.x, ny, r)){ e.y = ny; return true; }
   const l = Math.hypot(dx, dy) || 1;
   for (const a of [0.6, -0.6, 1.2, -1.2]){ const ca = Math.cos(a), sa = Math.sin(a); const rx = e.x + (dx*ca - dy*sa), ry = e.y + (dx*sa + dy*ca); if (!blocked(rx, ry, r)){ e.x = rx; e.y = ry; return true; } }
+  if (colMask(e.x, e.y, r*0.5)){ e.x = nx; e.y = ny; return true; }   // stuck inside a painted prop: let it walk out
   return false;
 }
 
@@ -124,6 +126,19 @@ function makeZombie(type, x, y){
   zombies.push(z); return z;
 }
 function screenDirOf(wx, wy){ const a = P(wx, wy, 0), b = P(0, 0, 0), dx = a[0] - b[0], dy = a[1] - b[1]; return Math.abs(dx) > Math.abs(dy)*1.15 ? (dx > 0 ? 'r' : 'l') : (dy > 0 ? 'd' : 'u'); }
+function fireList(){
+  const L = [];
+  if (typeof FIRES !== 'undefined'){ if (!firesInit) initFires(); for (const f of FIRES) L.push({x: f.wx, y: f.wy, R: 3.2 + Math.min(3, (f.s || 20)/18)}); }
+  for (const f of fires) L.push({x: f.x, y: f.y, R: 3.2});
+  if (flameLit) L.push({x: POI.flame[0], y: POI.flame[1], R: 6});
+  return L;
+}
+let FIRE_CACHE = null, FIRE_CACHE_T = -1;
+function nearestFire(x, y){
+  if (FIRE_CACHE_T !== time){ FIRE_CACHE = fireList(); FIRE_CACHE_T = time; }
+  let best = null, bd = 1e9; for (const f of FIRE_CACHE){ const d = Math.hypot(x - f.x, y - f.y) - f.R; if (d < bd){ bd = d; best = f; } }
+  return bd < 4 ? best : null;
+}
 function updateZombies(dt){
   for (let i = zombies.length - 1; i >= 0; i--){
     const z = zombies[i], T = z.T;
@@ -143,6 +158,21 @@ function updateZombies(dt){
       z.wander -= dt; if (z.wander <= 0){ z.wander = 2 + Math.random()*4; z.wa = Math.random()*TAU; z.still = Math.random() < 0.35; }
       if (!z.still){ mvx = Math.cos(z.wa); mvy = Math.sin(z.wa); sp *= 0.4; }
     }
+    // fear of fire: zombies stop at the edge of firelight; frenzied wave zombies push in but burn
+    { const f = nearestFire(z.x, z.y);
+      if (f && !z.boss){
+        const fx = z.x - f.x, fy = z.y - f.y, fd = Math.hypot(fx, fy) || 0.01, edge = f.R + 2.5;
+        if (fd < edge){
+          let wgt = Math.min(1, (edge - fd)/2.5); if (z.frenzy) wgt *= 0.3;
+          const ax = fx/fd, ay = fy/fd, toward = mvx*(-ax) + mvy*(-ay);
+          if (toward > 0){ mvx += ax*toward*wgt*1.6; mvy += ay*toward*wgt*1.6; }   // cancel the step into the fire
+          if (fd < f.R){ mvx += ax*wgt*1.4; mvy += ay*wgt*1.4; if (!z.frenzy) sp = Math.max(sp, T.spd*1.1); }
+          if (fd < f.R*0.7){ z.burn = Math.max(z.burn || 0, 0.6); }
+          z.scared = 0.4;
+        }
+      }
+    }
+    if (z.scared > 0) z.scared -= dt;
     if (z.kb > 0){ z.kb -= dt; mvx = z.kvx; mvy = z.kvy; sp = 6*z.kb/0.2; }
     if (mvx || mvy){
       const ox = z.x, oy = z.y; moveEntity(z, mvx*sp*dt, mvy*sp*dt, T.r); stepTrack(z, ox, oy, 1.8);
