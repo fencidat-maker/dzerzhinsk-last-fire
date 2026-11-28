@@ -20,12 +20,46 @@ addEventListener('resize', resize); resize();
 const TW = 2048, TH = 1365;          // tile size in P units
 const TILEMETA = __TILES__;           // [i, j, x0, y0] (un-mirrored draft coordinates)
 const tiles = TILEMETA.map(m => ({i: m[0], j: m[1], x0: -(m[2] + TW), y0: m[3], img: null, state: 0, used: 0}));
+tiles.sort((a, b) => (a.j - b.j) || (a.i - b.i));   // deterministic draw order: lets us feather only the later-drawn side of each overlap
+// ---- adjacent generated tiles physically overlap (grid step < tile size); painting them edge-to-edge
+// leaves a hard seam wherever the later tile is drawn opaque over the earlier one. We feather the
+// later tile's edge across the known overlap band so the two crossfade instead of cutting sharply.
+const OV_L = TW - 1830, OV_T = TH - 1215;   // overlap widths measured from the tile grid spacing
+const tileSet = new Set(tiles.map(t => t.i + '_' + t.j));
+for (const t of tiles){ t.ftL = tileSet.has((t.i - 1) + '_' + t.j); t.ftT = tileSet.has(t.i + '_' + (t.j - 1)); }
+const maskCache = {};
+function edgeMask(fl, ft){
+  const key = (fl ? 1 : 0) + '' + (ft ? 1 : 0); if (maskCache[key]) return maskCache[key];
+  const c = document.createElement('canvas'); c.width = TW; c.height = TH; const g = c.getContext('2d');
+  g.fillStyle = '#fff'; g.fillRect(0, 0, TW, TH);
+  function band(x0, y0, w, h, horiz){
+    // the two tiles' content rarely lines up pixel-for-pixel (independent generations), so a long
+    // crossfade across the whole overlap just ghosts a building in two places; instead cut mostly at
+    // the middle of the overlap and only feather a narrow strip there.
+    const id = g.getImageData(x0, y0, w, h), d = id.data, span = horiz ? w : h, mid = span/2, FW = 56;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++){
+      const p = horiz ? x : y; let t2; if (p < mid - FW/2) t2 = 0; else if (p > mid + FW/2) t2 = 1; else t2 = (p - (mid - FW/2))/FW;
+      const i4 = (y*w + x)*4; d[i4 + 3] = Math.round(d[i4 + 3]*t2);
+    }
+    g.putImageData(id, x0, y0);
+  }
+  if (fl) band(0, 0, OV_L, TH, true);
+  if (ft) band(0, 0, TW, OV_T, false);
+  return maskCache[key] = c;
+}
 let tileTick = 0, loadedCount = 0;
 function tileTouch(t){
   t.used = ++tileTick;
   if (t.state === 0){
     t.state = 1; const im = new Image(); im.decoding = 'async';
-    im.onload = () => { t.img = im; t.state = 2; loadedCount++; trimTiles(); };
+    im.onload = () => {
+      if ((t.ftL || t.ftT) && !window.__noFeather){
+        const mc = document.createElement('canvas'); mc.width = TW; mc.height = TH; const mg = mc.getContext('2d');
+        mg.drawImage(im, 0, 0, TW, TH); mg.globalCompositeOperation = 'destination-in'; mg.drawImage(edgeMask(t.ftL, t.ftT), 0, 0);
+        t.img = mc;
+      } else t.img = im;
+      t.state = 2; loadedCount++; trimTiles();
+    };
     im.onerror = () => { t.state = 0; };
     im.src = 't/' + t.i + '_' + t.j + '.webp';
   }
@@ -343,6 +377,43 @@ function setSneak(on){ hero.sneak = on; $('bsnk').classList.toggle('on', on); if
 $('quest').addEventListener('pointerdown', e => { e.stopPropagation(); Quests.cycle(); });
 document.addEventListener('contextmenu', e => e.preventDefault());
 
+// ---------------------------------------------------------------- Bluetooth / Android TV gamepad
+const GP = {prevBtn: []};
+addEventListener('gamepadconnected', () => { document.body.classList.add('gamepad'); toast('Геймпад подключён', 2); });
+addEventListener('gamepaddisconnected', () => { document.body.classList.remove('gamepad'); });
+function gpConfirm(){
+  if (slidesOn){ document.getElementById('sl').dispatchEvent(new Event('pointerdown')); return true; }
+  if (!running && $('start').style.display !== 'none'){ $('go').click(); return true; }
+  if (dlgLines){ nextLine(); return true; }
+  if ($('dead').style.display === 'flex'){ respawn(); return true; }
+  return false;
+}
+function pollGamepad(){
+  const pads = navigator.getGamepads ? navigator.getGamepads() : []; let gp = null;
+  for (const p of pads){ if (p){ gp = p; break; } }
+  if (!gp) return;
+  const prev = GP.prevBtn, cur = gp.buttons.map(b => !!(b && (b.pressed || b.value > 0.5)));
+  const pressed = i => cur[i] && !prev[i], held = i => !!cur[i];
+  if ((pressed(0) || pressed(9)) && gpConfirm()){ GP.prevBtn = cur; return; }
+  if (!running || dlgLines || slidesOn){ GP.prevBtn = cur; return; }
+  const dz = 0.22; let ax = gp.axes[0] || 0, ay = gp.axes[1] || 0;
+  if (cur[14]) ax = -1; else if (cur[15]) ax = 1;
+  if (cur[12]) ay = -1; else if (cur[13]) ay = 1;
+  const mag = Math.hypot(ax, ay);
+  if (mag > dz){ input.x = ax; input.y = ay; } else if (!joy.on){ input.x = 0; input.y = 0; }
+  input.sprint = mag > 0.9 || held(6);
+  const rx = gp.axes[2] || 0, ry = gp.axes[3] || 0;
+  if (Math.hypot(rx, ry) > 0.35){ hero.aim = Math.atan2(ry, rx); input.aimX = 1; input.aimA = hero.aim; }
+  input.fire = held(0) || held(7);
+  if (pressed(1)) interact();
+  if (pressed(2)) startReload();
+  if (pressed(3)) useMed();
+  if (pressed(4)) setSneak(!hero.sneak);
+  if (pressed(5)) switchWeapon(1);
+  if (pressed(8)){ bigMap = !bigMap; mm.classList.toggle('big', bigMap); }
+  GP.prevBtn = cur;
+}
+
 // ---------------------------------------------------------------- loop
 let last = 0, dtLast = 0.016;
 function onColReady(){   // painted-obstacle masks arrived: push anything standing inside a prop to the nearest free spot
@@ -359,6 +430,7 @@ function init(){
 }
 function frame(ts){
   const dt = Math.min(0.05, (ts - last)/1000 || 0.016); last = ts; dtLast = dt; time += dt;
+  pollGamepad();
   if (running){
     if (!dlgLines && !slidesOn){
       levelTick(); updateHero(dt); levelUpdate(dt); updateCars(dt); updateZombies(dt); updateNpcs(dt); updateBullets(dt); updatePickups(dt); spawnTick(dt); Quests.update(dt);
@@ -397,4 +469,4 @@ $('go').addEventListener('click', () => {
   try { const w = window.Telegram.WebApp; w.ready(); w.expand(); if (w.disableVerticalSwipes) w.disableVerticalSwipes(); } catch (_) {}
 });
 requestAnimationFrame(frame);
-window.__dbg = {AUD, makeNoise, wakeAll, inPit, CARS, makeCar, enterCar, exitCar, get driving(){ return driving; }, enterLevel, leaveLevel, LEVELS, get LEVEL(){ return LEVEL; }, colMask, nearestFire, CM, hero, S, zombies, Quests, tiles, P, POI, blocked, occludersOf, input, freeNear, npcs, bullets, pickups, giveWeapon, makeZombie, nextLine, interact, killZombie, hud, get dlg(){ return dlgLines; }, get zlist(){ return zombies; }, step(dt){ updateHero(dt); updateCars(dt); updateZombies(dt); updateNpcs(dt); updateBullets(dt); updatePickups(dt); Quests.update(dt); }};
+window.__dbg = {AUD, makeNoise, wakeAll, inPit, CARS, makeCar, enterCar, exitCar, get driving(){ return driving; }, enterLevel, leaveLevel, LEVELS, get LEVEL(){ return LEVEL; }, colMask, nearestFire, CM, hero, S, zombies, Quests, tiles, P, POI, blocked, occludersOf, input, freeNear, npcs, bullets, pickups, giveWeapon, makeZombie, nextLine, interact, killZombie, hud, get dlg(){ return dlgLines; }, get zlist(){ return zombies; }, step(dt){ updateHero(dt); updateCars(dt); updateZombies(dt); updateNpcs(dt); updateBullets(dt); updatePickups(dt); Quests.update(dt); }, tilesIn, drawTiles, TW, TH};
